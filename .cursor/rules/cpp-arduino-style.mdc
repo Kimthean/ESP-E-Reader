@@ -1,0 +1,47 @@
+---
+globs: *.cpp,*.h,*.ino
+description: "Arduino C++ coding style and best practices for e-reader project"
+---
+
+# Arduino C++ Coding Guidelines for E-Reader
+
+## Code Organization
+- Use [src/main.cpp](mdc:src/main.cpp) as the main entry point
+- Create separate header files for different components (display, sensors, etc.)
+- Group related functionality into classes or namespaces
+
+## Pin Definitions
+Always use #define for pin assignments at the top of files:
+```cpp
+// Display pins
+#define EPD_CS     5
+#define EPD_DC     17
+#define EPD_RST    16
+#define EPD_BUSY   4
+
+// I2C pins
+#define I2C_SDA    21
+#define I2C_SCL    22
+```
+
+## Power Management
+- Always implement proper sleep modes for battery efficiency
+- Use `esp_deep_sleep_start()` for long sleep periods
+- Wake up only when necessary (RTC interrupt, button press, etc.)
+
+## Error Handling
+- Always check return values from sensor readings
+- Implement timeout mechanisms for SPI/I2C communications
+- Use Serial.print() for debugging but consider disabling in production
+
+## Library Usage
+- Use `#include <SPI.h>` for display and SD card
+- Use `#include <Wire.h>` for I2C devices (RTC, AHT30)
+- Initialize peripherals in setup() function
+- Handle device failures gracefully
+
+## Display Management
+- E-ink displays require specific timing - respect busy signal
+- Minimize display updates to preserve battery life
+- Use partial updates when possible
+- Clear display buffer before drawing new content

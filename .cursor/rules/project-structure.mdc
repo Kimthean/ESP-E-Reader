@@ -1,0 +1,62 @@
+---
+alwaysApply: true
+description: "Project structure and organization guidelines for e-reader firmware"
+---
+
+# E-Reader Project Structure Guide
+
+## Main Entry Point
+The main firmware entry point is [src/main.cpp](mdc:src/main.cpp), which should contain:
+- Hardware initialization
+- Main application loop
+- Power management logic
+
+## Project Configuration
+- [platformio.ini](mdc:platformio.ini) contains platform and library configurations
+- Target board: ESP32 development board
+- Framework: Arduino
+
+## Recommended File Organization
+
+### Header Files (include/)
+- `pins.h` - GPIO pin definitions
+- `display.h` - Display controller interface
+- `sensors.h` - Sensor management
+- `power.h` - Power management functions
+- `ui.h` - User interface definitions
+
+### Source Files (src/)
+- `main.cpp` - Main application logic
+- `display.cpp` - Display controller implementation
+- `sensors.cpp` - Sensor reading and management
+- `power.cpp` - Power management implementation
+- `ui.cpp` - User interface logic
+
+### Library Dependencies
+Add to platformio.ini:
+```ini
+lib_deps = 
+    Wire
+    SPI
+    SD
+    Adafruit GFX Library
+    ; Add specific libraries for sensors and display
+```
+
+## Development Workflow
+1. Hardware initialization in `setup()`
+2. Main loop handles: UI events, sensor readings, display updates
+3. Power management between operations
+4. Error handling and recovery
+
+## Testing Structure
+- Use [test/](mdc:test/) directory for unit tests
+- Test individual components separately
+- Hardware-in-the-loop testing for sensors
+- Power consumption validation
+
+## Build Configuration
+- Debug builds for development
+- Release builds for deployment
+- Optimize for size and power consumption
+- Enable/disable debug output based on build type
