@@ -10,7 +10,8 @@ enum AppScreen
     SCREEN_BOOKS,
     SCREEN_SETTINGS,
     SCREEN_WIFI,
-    SCREEN_CLOCK
+    SCREEN_CLOCK,
+    SCREEN_FILES,
 };
 
 /**
@@ -37,6 +38,12 @@ void handleButtonPress(int button);
  * @param mode The display update mode to use.
  */
 void drawMainMenu(EinkDisplayManager::DisplayUpdateMode mode);
+
+/**
+ * @brief Draws the current screen based on the current_screen state.
+ * @param mode The display update mode to use.
+ */
+void drawCurrentScreen(EinkDisplayManager::DisplayUpdateMode mode);
 
 /**
  * @brief Draws the status bar at the top of the screen.
@@ -68,12 +75,10 @@ void drawWifiScreen(EinkDisplayManager::DisplayUpdateMode mode);
 void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode);
 
 /**
- * @brief Draws button hints at the bottom of the screen.
- * @param leftHint Text for UP button (left side)
- * @param centerHint Text for SELECT button (center)
- * @param rightHint Text for DOWN button (right side)
+ * @brief Draws the Files screen.
+ * @param mode The display update mode to use.
  */
-void drawButtonHints(const char* leftHint, const char* centerHint, const char* rightHint);
+void drawFilesScreen(EinkDisplayManager::DisplayUpdateMode mode);
 
 /**
  * @brief Handles SELECT button press based on current screen context.

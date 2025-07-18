@@ -105,13 +105,13 @@ bool powerOnSDCard()
  */
 void powerOffSDCard()
 {
-    Serial.print("Powering off SD card... ");
+    Serial.println("[STORAGE] powerOffSDCard() - Shutting down SD card");
 
     // Set WAKE_SDIO low to disable power
     digitalWrite(WAKE_SDIO, LOW);
     sd_powered = false;
 
-    Serial.println("Done");
+    Serial.println("[STORAGE] SD card powered off successfully");
 }
 
 /**
@@ -627,6 +627,7 @@ void enableSDCardWakeup()
  */
 void disableSDCardWakeup()
 {
+    Serial.println("[STORAGE] disableSDCardWakeup() - Disabling SD card wakeup capability");
     powerOffSDCard();
 }
 

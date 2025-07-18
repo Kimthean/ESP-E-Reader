@@ -8,6 +8,17 @@ Adafruit_AHTX0 aht;
 bool aht30_available = false;
 bool rtc_available = false;
 
+// Time management variables
+static bool ntp_initialized = false;
+static bool ntp_synced = false;
+static time_t last_ntp_sync = 0;
+static unsigned long last_sync_attempt = 0;
+
+// Async NTP sync state
+static bool ntp_sync_in_progress = false;
+static unsigned long ntp_sync_start_time = 0;
+static const unsigned long NTP_SYNC_TIMEOUT_MS = 10000; // 10 seconds timeout
+
 /**
  * Initialize all sensors
  */
@@ -251,14 +262,14 @@ void printSensorStatus()
 }
 
 /**
- * Format time_t as readable string
+ * Format time_t as readable string (12-hour format with AM/PM)
  */
 String formatTime(time_t time)
 {
     struct tm *timeinfo;
     timeinfo = localtime(&time);
-    char buffer[6];
-    strftime(buffer, sizeof(buffer), "%H:%M", timeinfo);
+    char buffer[9]; // Increased buffer size for AM/PM
+    strftime(buffer, sizeof(buffer), "%I:%M %p", timeinfo);
     return String(buffer);
 }
 
@@ -285,4 +296,231 @@ String formatDate(time_t time)
     dateStr += String(timeinfo->tm_mday);
 
     return dateStr;
+}
+
+/**
+ * Initialize time synchronization system
+ */
+bool initTimeSync()
+{
+    Serial.println("Initializing time synchronization...");
+    
+    // Configure NTP with multiple servers for redundancy
+    // Using Cambodia Time (UTC+7) - no daylight saving time
+    configTime(DEFAULT_GMT_OFFSET_SEC, DEFAULT_DAYLIGHT_OFFSET_SEC, NTP_SERVER1, NTP_SERVER2, NTP_SERVER3);
+    
+    ntp_initialized = true;
+    Serial.println("NTP configuration completed with Cambodia timezone (UTC+7)");
+    Serial.println("Available timezones: UTC, EST, PST, CET, JST, AEST, ICT");
+    
+    // Start initial sync if WiFi is connected (non-blocking)
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        startNTPSync();
+    }
+    
+    return true;
+}
+
+/**
+ * Start asynchronous NTP synchronization
+ */
+bool startNTPSync()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        Serial.println("WiFi not connected - cannot sync with NTP");
+        return false;
+    }
+    
+    if (ntp_sync_in_progress)
+    {
+        return false; // Sync already in progress
+    }
+    
+    Serial.println("Starting NTP time synchronization...");
+    ntp_sync_in_progress = true;
+    ntp_sync_start_time = millis();
+    last_sync_attempt = millis();
+    
+    return true;
+}
+
+/**
+ * Check and complete asynchronous NTP synchronization (non-blocking)
+ */
+bool checkNTPSync()
+{
+    if (!ntp_sync_in_progress)
+    {
+        return false;
+    }
+    
+    // Check for timeout
+    if (millis() - ntp_sync_start_time > NTP_SYNC_TIMEOUT_MS)
+    {
+        Serial.println("NTP synchronization timed out");
+        ntp_sync_in_progress = false;
+        return false;
+    }
+    
+    // Check if time is now available
+    struct tm timeinfo = {0};
+    if (getLocalTime(&timeinfo))
+    {
+        time_t now = time(nullptr);
+        if (now > 1000000000) // Valid timestamp (after year 2001)
+        {
+            ntp_synced = true;
+            last_ntp_sync = now;
+            ntp_sync_in_progress = false;
+            
+            Serial.printf("NTP sync successful: %s", ctime(&now));
+            
+            // Update RTC if available
+            if (rtc_available)
+            {
+                if (setRTCTime(now))
+                {
+                    Serial.println("RTC updated with NTP time");
+                }
+            }
+            
+            return true;
+        }
+    }
+    
+    // Still waiting for sync
+    return false;
+}
+
+/**
+ * Synchronize time with NTP servers (blocking - for manual sync)
+ */
+bool syncTimeWithNTP()
+{
+    if (!startNTPSync())
+    {
+        return false;
+    }
+    
+    // Wait for completion with timeout
+    while (ntp_sync_in_progress)
+    {
+        if (!checkNTPSync())
+        {
+            // Check if we timed out
+            if (millis() - ntp_sync_start_time > NTP_SYNC_TIMEOUT_MS)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return true; // Sync completed successfully
+        }
+        delay(100); // Small delay to prevent busy waiting
+    }
+    
+    return ntp_synced;
+}
+
+/**
+ * Get current time status and information
+ */
+TimeStatus getTimeStatus()
+{
+    TimeStatus status;
+    status.ntp_synced = ntp_synced;
+    status.rtc_available = rtc_available;
+    status.last_ntp_sync = last_ntp_sync;
+    status.current_time = getCurrentTime();
+    
+    if (ntp_synced && (millis() - last_sync_attempt < NTP_SYNC_INTERVAL_MS))
+    {
+        status.time_source = "NTP";
+    }
+    else if (rtc_available)
+    {
+        status.time_source = "RTC";
+    }
+    else
+    {
+        status.time_source = "SYSTEM";
+    }
+    
+    return status;
+}
+
+/**
+ * Get current time from best available source
+ */
+time_t getCurrentTime()
+{
+    time_t now = time(nullptr);
+    
+    // If we have a valid NTP time and it's recent, use system time
+    if (ntp_synced && now > 1000000000 && (millis() - last_sync_attempt < NTP_SYNC_INTERVAL_MS))
+    {
+        return now;
+    }
+    
+    // Fall back to RTC if available
+    if (rtc_available)
+    {
+        time_t rtc_time = getRTCTime();
+        if (rtc_time > 0)
+        {
+            return rtc_time;
+        }
+    }
+    
+    // Last resort: use system uptime (not accurate but better than nothing)
+    return millis() / 1000;
+}
+
+/**
+ * Check if NTP sync should be attempted
+ */
+bool shouldSyncNTP()
+{
+    // Don't sync if WiFi is not connected
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        return false;
+    }
+    
+    // Don't sync if we haven't initialized NTP
+    if (!ntp_initialized)
+    {
+        return false;
+    }
+    
+    // Sync if we've never synced before
+    if (last_sync_attempt == 0)
+    {
+        return true;
+    }
+    
+    // Sync if it's been more than the sync interval
+    return (millis() - last_sync_attempt) >= NTP_SYNC_INTERVAL_MS;
+}
+
+/**
+ * Update time from NTP (non-blocking check and sync)
+ */
+void updateTimeFromNTP()
+{
+    // Check if we have an ongoing sync
+    if (ntp_sync_in_progress)
+    {
+        checkNTPSync(); // Continue checking the ongoing sync
+        return;
+    }
+    
+    // Start a new sync if needed
+    if (shouldSyncNTP())
+    {
+        startNTPSync();
+    }
 }

@@ -3,6 +3,7 @@
 #include "pins.h"
 #include "ui.h" // Include the new UI header
 #include "main.h"
+#include "ui/files/files_screen.h" // Include FilesScreen header
 
 // OneButton instances for each button
 OneButton button1; // DOWN
@@ -29,8 +30,15 @@ void button3Click() // UP
 // --- Advanced Button Actions ---
 void button1DoubleClick() // DOWN double click
 {
-    Serial.println("DOWN double click - Quick action placeholder");
-    // Future: Quick action based on current screen
+    Serial.println("DOWN double click - Quick navigation down");
+    extern AppScreen current_screen;
+
+    if (current_screen == SCREEN_FILES)
+    {
+        extern FilesScreen filesScreen;
+        // Quick scroll down (jump 5 items)
+        filesScreen.handleQuickDownAction(5);
+    }
 }
 
 void button1LongPressStart() // DOWN long press
@@ -59,14 +67,33 @@ void button2LongPressStart() // SELECT long press
 
 void button3DoubleClick() // UP double click
 {
-    Serial.println("UP double click - Quick navigation placeholder");
-    // Future: Quick navigation action
+    Serial.println("UP double click - Quick navigation up");
+    extern AppScreen current_screen;
+
+    if (current_screen == SCREEN_FILES)
+    {
+        extern FilesScreen filesScreen;
+        // Quick scroll up (jump 5 items)
+        filesScreen.handleQuickUpAction(5);
+    }
 }
 
 void button3LongPressStart() // UP long press
 {
-    Serial.println("UP long press - System menu placeholder");
-    // Future: System menu or power options
+    Serial.println("UP long press - Opening global menu");
+    extern AppScreen current_screen;
+
+    // Open global menu for files screen
+    if (current_screen == SCREEN_FILES)
+    {
+        extern FilesScreen filesScreen;
+        filesScreen.showGlobalMenu();
+    }
+    else
+    {
+        // For other screens, system menu placeholder
+        Serial.println("System menu placeholder");
+    }
 }
 
 /**
@@ -93,9 +120,22 @@ void initializeButtons()
     button2.attachLongPressStart(button2LongPressStart);
 
     // Adjust timing for better responsiveness
-    button1.setDebounceMs(50);
-    button2.setDebounceMs(50);
-    button3.setDebounceMs(50);
+    button1.setDebounceMs(30); // Reduced debounce for better responsiveness
+    button2.setDebounceMs(30);
+    button3.setDebounceMs(30);
+
+    // Configure long press timing
+    button1.setLongPressIntervalMs(800); // 800ms for long press
+    button2.setLongPressIntervalMs(800);
+    button3.setLongPressIntervalMs(800);
+
+    // Configure double click timing
+    button1.setClickMs(150); // Max time for single click
+    button2.setClickMs(150);
+    button3.setClickMs(150);
+
+    // Note: setDoubleClickMs not available in this OneButton version
+    // Using default double click timing
 }
 
 /**

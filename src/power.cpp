@@ -299,7 +299,8 @@ void printPowerStatus()
  */
 void enterLightSleep(uint64_t sleep_time_us)
 {
-    Serial.println("Entering light sleep...");
+    Serial.printf("[POWER] enterLightSleep() called with %llu microseconds\n", sleep_time_us);
+    Serial.println("[POWER] Entering light sleep mode...");
     current_power_mode = POWER_LIGHT_SLEEP;
 
     // Configure wake up sources
@@ -307,10 +308,11 @@ void enterLightSleep(uint64_t sleep_time_us)
     enableGPIOWakeup();
 
     // Enter light sleep
+    Serial.println("[POWER] Calling esp_light_sleep_start()...");
     esp_light_sleep_start();
 
     current_power_mode = POWER_ACTIVE;
-    Serial.println("Woken up from light sleep");
+    Serial.println("[POWER] Woken up from light sleep");
 }
 
 /**
@@ -318,7 +320,8 @@ void enterLightSleep(uint64_t sleep_time_us)
  */
 void enterDeepSleep(uint64_t sleep_time_us)
 {
-    Serial.println("Entering deep sleep...");
+    Serial.printf("[POWER] enterDeepSleep() called with %llu microseconds\n", sleep_time_us);
+    Serial.println("[POWER] Entering deep sleep mode...");
     current_power_mode = POWER_DEEP_SLEEP;
 
     // Save critical data to RTC memory if needed
@@ -331,6 +334,8 @@ void enterDeepSleep(uint64_t sleep_time_us)
     setPowerLEDState(false);
 
     // Enter deep sleep
+    Serial.println("[POWER] Calling esp_deep_sleep_start() - device will not return until wakeup");
+    Serial.flush(); // Ensure log message is sent before sleep
     esp_deep_sleep_start();
 
     // This point is never reached (ESP32 resets on wake)
@@ -373,8 +378,10 @@ void setLowPowerMode(bool enable)
         setCpuFrequencyMhz(80);
 
         // Disable WiFi and Bluetooth
+        Serial.println("[POWER] Disabling WiFi and Bluetooth for low power mode");
         esp_wifi_stop();
         esp_bt_controller_disable();
+        Serial.println("[POWER] WiFi and Bluetooth disabled");
 
         // Disable unnecessary peripherals
         optimizePowerConsumption();
