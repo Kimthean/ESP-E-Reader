@@ -10,9 +10,9 @@
 #define RX8025T_I2C_ADDRESS 0x32
 
 // NTP Configuration
-#define NTP_SERVER1 "pool.ntp.org"
+#define NTP_SERVER3 "pool.ntp.org"
 #define NTP_SERVER2 "time.nist.gov"
-#define NTP_SERVER3 "time.google.com"
+#define NTP_SERVER1 "time.google.com"
 #define DEFAULT_GMT_OFFSET_SEC (7 * 3600)     // Cambodia Time (UTC+7)
 #define DEFAULT_DAYLIGHT_OFFSET_SEC 0         // Cambodia doesn't use DST
 #define NTP_SYNC_INTERVAL_MS (60 * 60 * 1000) // Sync every hour

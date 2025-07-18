@@ -8,6 +8,8 @@ enum AppScreen
 {
     SCREEN_MAIN_MENU,
     SCREEN_BOOKS,
+    SCREEN_BOOK_READER,
+    SCREEN_BOOK_MENU,
     SCREEN_SETTINGS,
     SCREEN_WIFI,
     SCREEN_CLOCK,
@@ -79,6 +81,8 @@ void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode);
  * @param mode The display update mode to use.
  */
 void drawFilesScreen(EinkDisplayManager::DisplayUpdateMode mode);
+
+// Book reader and menu drawing is now handled by BookScreen class
 
 /**
  * @brief Handles SELECT button press based on current screen context.

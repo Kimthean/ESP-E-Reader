@@ -2,9 +2,11 @@
 #include "display.h"
 #include "power.h"
 #include "sensors.h"
+#include "storage.h"
 #include "main.h"
 #include "ui/wifi/wifi_screen.h"
 #include "ui/files/files_screen.h"
+#include "ui/books/book_screen.h"
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -13,6 +15,7 @@ extern EinkDisplayManager display;
 // Screen instances
 WiFiScreen wifiScreen;
 FilesScreen filesScreen;
+BookScreen bookScreen;
 
 // --- UI State Management ---
 AppScreen current_screen = SCREEN_MAIN_MENU;
@@ -62,7 +65,13 @@ void drawCurrentScreen(EinkDisplayManager::DisplayUpdateMode mode)
         drawMainMenu(mode);
         break;
     case SCREEN_BOOKS:
-        drawBooksScreen(mode);
+        bookScreen.drawBookList(mode);
+        break;
+    case SCREEN_BOOK_READER:
+        bookScreen.drawBookReader(mode);
+        break;
+    case SCREEN_BOOK_MENU:
+        bookScreen.drawBookMenu(mode);
         break;
     case SCREEN_SETTINGS:
         drawSettingsScreen(mode);
@@ -73,7 +82,6 @@ void drawCurrentScreen(EinkDisplayManager::DisplayUpdateMode mode)
     case SCREEN_CLOCK:
         drawClockScreen(mode);
         break;
-
     case SCREEN_FILES:
         drawFilesScreen(mode);
         break;
@@ -134,7 +142,7 @@ void handleButtonPress(int button)
             switch (current_screen)
             {
             case SCREEN_BOOKS:
-                drawBooksScreen(EinkDisplayManager::UPDATE_FAST);
+                bookScreen.drawBookList(EinkDisplayManager::UPDATE_FAST);
                 break;
             case SCREEN_SETTINGS:
                 drawSettingsScreen(EinkDisplayManager::UPDATE_FAST);
@@ -176,15 +184,42 @@ void handleButtonPress(int button)
                 // Handle Files screen up action (navigation within Files screen)
                 filesScreen.handleUpAction();
             }
+            else if (current_screen == SCREEN_BOOKS)
+            {
+                // Handle up action in book screen
+                bookScreen.handleUpAction();
+            }
+            else if (current_screen == SCREEN_BOOK_READER)
+            {
+                // Handle up action in book reader
+                bookScreen.handleUpAction();
+            }
+            else if (current_screen == SCREEN_BOOK_MENU)
+            {
+                // Handle up action in book menu
+                bookScreen.handleUpAction();
+            }
             else
             {
-                // For other screens, go back to main menu
-                current_screen = SCREEN_MAIN_MENU;
-                Serial.println("UP pressed - returning to main menu");
-
-                // Clear screen to eliminate ghosting before returning to main menu
-                display.wipeScreen();
-                drawMainMenu(EinkDisplayManager::UPDATE_FAST);
+                // For other screens, go back to main menu or previous screen
+                if (current_screen == SCREEN_BOOK_READER || current_screen == SCREEN_BOOK_MENU)
+                {
+                    // Handle back action in book screen
+                    bookScreen.handleBackAction();
+                    // Update current screen based on book screen mode
+                    if (bookScreen.getCurrentMode() == BookScreen::MODE_BOOK_LIST)
+                    {
+                        current_screen = SCREEN_BOOKS;
+                    }
+                }
+                else
+                {
+                    // Return to main menu
+                    current_screen = SCREEN_MAIN_MENU;
+                    Serial.println("UP pressed - returning to main menu");
+                    display.wipeScreen();
+                    drawMainMenu(EinkDisplayManager::UPDATE_FAST);
+                }
             }
         }
         else if (button == 2) // SELECT button - context-specific action
@@ -291,20 +326,6 @@ void drawStatusBar()
     display.m_display.getTextBounds(time_str.c_str(), 0, 0, &x1, &y1, &w, &h);
     display.m_display.setCursor(8, 16);
     display.m_display.print(time_str);
-    
-    // Add small time source indicator
-    display.m_display.setFont();
-    String source_indicator = "";
-    if (time_status.time_source == "NTP") {
-        source_indicator = "●"; // Solid dot for NTP (most accurate)
-    } else if (time_status.time_source == "RTC") {
-        source_indicator = "○"; // Hollow dot for RTC
-    } else {
-        source_indicator = "?"; // Question mark for system time
-    }
-    display.m_display.setCursor(8 + w + 3, 16);
-    display.m_display.print(source_indicator);
-    display.m_display.setFont(&FreeMono9pt7b);
 
     // Calculate battery percentage
     int battery_percent = (int)((battery_voltage - 3.0) / (4.2 - 3.0) * 100);
@@ -313,20 +334,20 @@ void drawStatusBar()
 
     // Get battery text dimensions for proper positioning
     display.m_display.getTextBounds(battery_text.c_str(), 0, 0, &x1, &y1, &w, &h);
-    
+
     // Position battery elements from right edge
-    int battery_icon_x = display.m_display.width() - 25;  // Battery icon position
-    int battery_text_x = battery_icon_x - w - 8;          // Battery percentage text
-    
+    int battery_icon_x = display.m_display.width() - 25; // Battery icon position
+    int battery_text_x = battery_icon_x - w - 8;         // Battery percentage text
+
     // Draw battery icon and percentage
-    display.drawBatteryIcon(battery_icon_x, 5, battery_voltage, charging);
+    display.drawBatteryIcon(battery_icon_x, 7, battery_voltage, charging);
     display.m_display.setCursor(battery_text_x, 16);
     display.m_display.print(battery_text);
 
     // WiFi status indicator with custom icon (if connected)
     if (wifi_connected)
     {
-        int wifi_icon_x = battery_text_x - 20;  // Position WiFi icon with proper spacing
+        int wifi_icon_x = battery_text_x - 20; // Position WiFi icon with proper spacing
         display.drawWifiIcon(wifi_icon_x, 5, true);
     }
 
@@ -341,8 +362,41 @@ void handleSelectAction()
     switch (current_screen)
     {
     case SCREEN_BOOKS:
-        // Future: Open book selection or reading interface
-        Serial.println("Books: SELECT action - placeholder");
+        // Handle select action in book screen
+        bookScreen.handleSelectAction();
+        // Update current screen based on book screen mode
+        if (bookScreen.getCurrentMode() == BookScreen::MODE_BOOK_READER)
+        {
+            current_screen = SCREEN_BOOK_READER;
+        }
+        else if (bookScreen.getCurrentMode() == BookScreen::MODE_BOOK_MENU)
+        {
+            current_screen = SCREEN_BOOK_MENU;
+        }
+        break;
+
+    case SCREEN_BOOK_READER:
+        // Handle select action in book reader
+        bookScreen.handleSelectAction();
+        // Update current screen based on book screen mode
+        if (bookScreen.getCurrentMode() == BookScreen::MODE_BOOK_MENU)
+        {
+            current_screen = SCREEN_BOOK_MENU;
+        }
+        break;
+
+    case SCREEN_BOOK_MENU:
+        // Handle select action in book menu
+        bookScreen.handleSelectAction();
+        // Update current screen based on book screen mode
+        if (bookScreen.getCurrentMode() == BookScreen::MODE_BOOK_READER)
+        {
+            current_screen = SCREEN_BOOK_READER;
+        }
+        else if (bookScreen.getCurrentMode() == BookScreen::MODE_BOOK_LIST)
+        {
+            current_screen = SCREEN_BOOKS;
+        }
         break;
 
     case SCREEN_SETTINGS:
@@ -395,8 +449,18 @@ void handleDownAction()
     switch (current_screen)
     {
     case SCREEN_BOOKS:
-        // Future: Next book or page
-        Serial.println("Books: DOWN action - placeholder");
+        // Handle down action in book screen
+        bookScreen.handleDownAction();
+        break;
+
+    case SCREEN_BOOK_READER:
+        // Handle down action in book reader
+        bookScreen.handleDownAction();
+        break;
+
+    case SCREEN_BOOK_MENU:
+        // Handle down action in book menu
+        bookScreen.handleDownAction();
         break;
 
     case SCREEN_SETTINGS:
@@ -427,18 +491,7 @@ void handleDownAction()
 
 // --- Screen Drawing Functions ---
 
-void drawBooksScreen(EinkDisplayManager::DisplayUpdateMode mode)
-{
-    display.startDrawing();
-    drawStatusBar();
-
-    display.m_display.setFont(&FreeMonoBold18pt7b);
-    display.drawCenteredText("Books", 100, &FreeMonoBold18pt7b);
-    display.drawCenteredText("Coming Soon...", 150, &FreeMono12pt7b);
-
-    display.endDrawing();
-    display.update(mode);
-}
+// Book screen drawing is now handled by BookScreen class
 
 void drawSettingsScreen(EinkDisplayManager::DisplayUpdateMode mode)
 {
@@ -465,24 +518,24 @@ void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode)
 
     display.m_display.setFont(&FreeMonoBold18pt7b);
     display.drawCenteredText("Time & Date", 100, &FreeMonoBold18pt7b);
-    
+
     // Get current time and status
     time_t current_time = getCurrentTime();
     TimeStatus time_status = getTimeStatus();
-    
+
     // Display current time and date
     display.m_display.setFont(&FreeMonoBold12pt7b);
     String time_str = formatTime(current_time);
     String date_str = formatDate(current_time);
-    
+
     display.drawCenteredText(time_str.c_str(), 140, &FreeMonoBold12pt7b);
     display.drawCenteredText(date_str.c_str(), 160, &FreeMono9pt7b);
-    
+
     // Display time source and sync status
     display.m_display.setFont(&FreeMono9pt7b);
     String source_text = "Source: " + time_status.time_source;
     display.drawCenteredText(source_text.c_str(), 190, &FreeMono9pt7b);
-    
+
     if (time_status.ntp_synced && time_status.last_ntp_sync > 0)
     {
         String last_sync = "Last NTP: " + formatTime(time_status.last_ntp_sync);
@@ -496,7 +549,7 @@ void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode)
     {
         display.drawCenteredText("WiFi: Disconnected", 210, &FreeMono9pt7b);
     }
-    
+
     // Instructions
     display.drawCenteredText("SELECT: Manual sync (if WiFi connected)", 250, &FreeMono9pt7b);
     display.drawCenteredText("UP: Return to main menu", 270, &FreeMono9pt7b);
@@ -509,3 +562,5 @@ void drawFilesScreen(EinkDisplayManager::DisplayUpdateMode mode)
 {
     filesScreen.draw(mode);
 }
+
+// Book reader and menu drawing is now handled by BookScreen class

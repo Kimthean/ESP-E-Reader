@@ -4,6 +4,7 @@
 #include "ui.h" // Include the new UI header
 #include "main.h"
 #include "ui/files/files_screen.h" // Include FilesScreen header
+#include "ui/books/book_screen.h" // Include BookScreen header
 
 // OneButton instances for each button
 OneButton button1; // DOWN
@@ -38,6 +39,16 @@ void button1DoubleClick() // DOWN double click
         extern FilesScreen filesScreen;
         // Quick scroll down (jump 5 items)
         filesScreen.handleQuickDownAction(5);
+    }
+    else if (current_screen == SCREEN_BOOKS)
+    {
+        extern BookScreen bookScreen;
+        // Navigate to next book page (right navigation)
+        if (bookScreen.getCurrentBookPage() < bookScreen.getTotalBookPages() - 1)
+        {
+            bookScreen.nextBookPage();
+            bookScreen.draw(EinkDisplayManager::UPDATE_FULL);
+        }
     }
 }
 
@@ -75,6 +86,16 @@ void button3DoubleClick() // UP double click
         extern FilesScreen filesScreen;
         // Quick scroll up (jump 5 items)
         filesScreen.handleQuickUpAction(5);
+    }
+    else if (current_screen == SCREEN_BOOKS)
+    {
+        extern BookScreen bookScreen;
+        // Navigate to previous book page (left navigation)
+        if (bookScreen.getCurrentBookPage() > 0)
+        {
+            bookScreen.previousBookPage();
+            bookScreen.draw(EinkDisplayManager::UPDATE_FULL);
+        }
     }
 }
 

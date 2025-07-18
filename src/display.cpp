@@ -125,10 +125,10 @@ void EinkDisplayManager::drawBatteryIcon(int x, int y, float battery_voltage, bo
 
     // Draw battery outline
     m_display.drawRect(x, y, icon_width, icon_height, GxEPD_BLACK);
-    
+
     // Draw battery terminal (positive end)
     m_display.fillRect(x + icon_width, y + (icon_height - terminal_height) / 2, terminal_width, terminal_height, GxEPD_BLACK);
-    
+
     // Calculate and draw battery fill based on percentage
     int fill_width = (int)((percentage / 100.0) * (icon_width - 2.0));
     if (fill_width > 0)
@@ -148,14 +148,14 @@ void EinkDisplayManager::drawBatteryIcon(int x, int y, float battery_voltage, bo
             }
         }
     }
-    
+
     // Draw charging indicator if charging
     if (charging)
     {
         // Draw small lightning bolt in center
         int bolt_x = x + icon_width / 2 - 1;
         int bolt_y = y + 2;
-        
+
         // Lightning bolt shape (simplified)
         m_display.drawLine(bolt_x, bolt_y, bolt_x + 2, bolt_y + 2, GxEPD_WHITE);
         m_display.drawLine(bolt_x + 2, bolt_y + 2, bolt_x, bolt_y + 4, GxEPD_WHITE);
@@ -173,15 +173,12 @@ void EinkDisplayManager::drawWifiIcon(int x, int y, bool connected)
         // Draw WiFi signal strength bars (3 bars)
         // Bar 1 (shortest)
         m_display.fillRect(x, y + 8, 2, 2, GxEPD_BLACK);
-        
+
         // Bar 2 (medium)
         m_display.fillRect(x + 3, y + 6, 2, 4, GxEPD_BLACK);
-        
+
         // Bar 3 (tallest)
         m_display.fillRect(x + 6, y + 4, 2, 6, GxEPD_BLACK);
-        
-        // Base dot
-        m_display.fillRect(x + 9, y + 9, 2, 1, GxEPD_BLACK);
     }
     else
     {
@@ -190,7 +187,7 @@ void EinkDisplayManager::drawWifiIcon(int x, int y, bool connected)
         m_display.drawRect(x, y + 8, 2, 2, GxEPD_BLACK);
         m_display.drawRect(x + 3, y + 6, 2, 4, GxEPD_BLACK);
         m_display.drawRect(x + 6, y + 4, 2, 6, GxEPD_BLACK);
-        
+
         // Draw X to indicate disconnection
         m_display.drawLine(x, y, x + 10, y + 10, GxEPD_BLACK);
         m_display.drawLine(x + 10, y, x, y + 10, GxEPD_BLACK);
