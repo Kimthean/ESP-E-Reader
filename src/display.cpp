@@ -10,7 +10,8 @@ EinkDisplayManager::EinkDisplayManager() : m_display(GxEPD2_370_GDEY037T03(EPD_C
 void EinkDisplayManager::begin()
 {
     Serial.println("Initializing display...");
-    m_display.init(115200, true, 2, false);
+    // Use false for second parameter to prevent full refresh on each boot
+    m_display.init(115200, false, 10, false);
     m_display.setRotation(0);
     m_display.setTextColor(GxEPD_BLACK);
     m_state.initialized = true;
@@ -56,9 +57,19 @@ void EinkDisplayManager::update(DisplayUpdateMode mode)
 
     if (mode == UPDATE_FAST)
     {
-        partial_update = false;
+        partial_update = true;
     }
 
+    // Check if we need to wipe screen due to too many partial updates
+    const int MAX_PARTIAL_UPDATES = 10;
+    if (partial_update && m_state.partial_update_count >= MAX_PARTIAL_UPDATES)
+    {
+        Serial.println("Auto-wiping screen after multiple partial updates");
+        wipeScreen();
+        m_state.partial_update_count = 0;
+    }
+
+    // Use standard display update for all modes
     m_display.display(partial_update);
 
     if (!partial_update)
@@ -70,6 +81,7 @@ void EinkDisplayManager::update(DisplayUpdateMode mode)
     {
         m_state.partial_update_count++;
     }
+
     m_state.dirty = false;
 }
 
@@ -119,4 +131,31 @@ void EinkDisplayManager::drawWifiIcon(int x, int y, bool connected)
     // TODO: Replace with a proper disconnected icon
     const unsigned char *icon = connected ? wifi_icon : wifi_icon;
     m_display.drawXBitmap(x, y, icon, 48, 48, GxEPD_BLACK);
+}
+
+void EinkDisplayManager::wipeScreen()
+{
+    if (!m_state.initialized)
+        return;
+
+    m_display.setPartialWindow(0, 0, m_display.width(), m_display.height());
+
+    // First pass: fill with black
+    m_display.firstPage();
+    do
+    {
+        m_display.fillRect(0, 0, m_display.width(), m_display.height(), GxEPD_BLACK);
+    } while (m_display.nextPage());
+
+    delay(10);
+
+    // Second pass: fill with white
+    m_display.firstPage();
+    do
+    {
+        m_display.fillRect(0, 0, m_display.width(), m_display.height(), GxEPD_WHITE);
+    } while (m_display.nextPage());
+
+    // Prepare for content drawing
+    m_display.setFullWindow();
 }

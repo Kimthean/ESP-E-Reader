@@ -26,13 +26,48 @@ void button3Click() // UP
     ::handleButtonPress(3);
 }
 
-// --- Placeholder/Empty handlers for other actions ---
-void button1DoubleClick() { Serial.println("Button 1 double clicked"); }
-void button1LongPressStart() { Serial.println("Button 1 long pressed"); }
-void button2DoubleClick() { Serial.println("Button 2 double clicked"); }
-void button2LongPressStart() { Serial.println("Button 2 long pressed"); }
-void button3DoubleClick() { Serial.println("Button 3 double clicked"); }
-void button3LongPressStart() { Serial.println("Button 3 long pressed"); }
+// --- Advanced Button Actions ---
+void button1DoubleClick() // DOWN double click
+{
+    Serial.println("DOWN double click - Quick action placeholder");
+    // Future: Quick action based on current screen
+}
+
+void button1LongPressStart() // DOWN long press
+{
+    Serial.println("DOWN long press - Context action placeholder");
+    // Future: Context-specific long press action
+}
+
+void button2DoubleClick() // SELECT double click
+{
+    Serial.println("SELECT double click - Quick confirm");
+    // Future: Quick confirm/execute action
+}
+
+void button2LongPressStart() // SELECT long press
+{
+    Serial.println("SELECT long press - Global back to main menu");
+    // Global navigation: Long press SELECT always returns to main menu
+    extern AppScreen current_screen;
+    if (current_screen != SCREEN_MAIN_MENU)
+    {
+        current_screen = SCREEN_MAIN_MENU;
+        drawMainMenu(EinkDisplayManager::UPDATE_FAST);
+    }
+}
+
+void button3DoubleClick() // UP double click
+{
+    Serial.println("UP double click - Quick navigation placeholder");
+    // Future: Quick navigation action
+}
+
+void button3LongPressStart() // UP long press
+{
+    Serial.println("UP long press - System menu placeholder");
+    // Future: System menu or power options
+}
 
 /**
  * Initialize all buttons with proper hardware configuration

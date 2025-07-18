@@ -43,4 +43,46 @@ void drawMainMenu(EinkDisplayManager::DisplayUpdateMode mode);
  */
 void drawStatusBar();
 
+/**
+ * @brief Draws the Books screen.
+ * @param mode The display update mode to use.
+ */
+void drawBooksScreen(EinkDisplayManager::DisplayUpdateMode mode);
+
+/**
+ * @brief Draws the Settings screen.
+ * @param mode The display update mode to use.
+ */
+void drawSettingsScreen(EinkDisplayManager::DisplayUpdateMode mode);
+
+/**
+ * @brief Draws the WiFi screen.
+ * @param mode The display update mode to use.
+ */
+void drawWifiScreen(EinkDisplayManager::DisplayUpdateMode mode);
+
+/**
+ * @brief Draws the Clock screen.
+ * @param mode The display update mode to use.
+ */
+void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode);
+
+/**
+ * @brief Draws button hints at the bottom of the screen.
+ * @param leftHint Text for UP button (left side)
+ * @param centerHint Text for SELECT button (center)
+ * @param rightHint Text for DOWN button (right side)
+ */
+void drawButtonHints(const char* leftHint, const char* centerHint, const char* rightHint);
+
+/**
+ * @brief Handles SELECT button press based on current screen context.
+ */
+void handleSelectAction();
+
+/**
+ * @brief Handles DOWN button press based on current screen context.
+ */
+void handleDownAction();
+
 #endif // UI_H

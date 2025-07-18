@@ -38,6 +38,8 @@ const int main_menu_item_count = sizeof(main_menu_items) / sizeof(main_menu_item
 
 void initializeUI()
 {
+    // Clear screen to eliminate any startup ghosting
+    display.wipeScreen();
     drawMainMenu(EinkDisplayManager::UPDATE_FULL);
 }
 
@@ -56,7 +58,6 @@ void updateUI()
 
 void handleButtonPress(int button)
 {
-    resetActivityTimer();
 
     if (current_screen == SCREEN_MAIN_MENU)
     {
@@ -72,15 +73,57 @@ void handleButtonPress(int button)
         else if (button == 2) // SELECT
         {
             current_screen = main_menu_items[main_menu_selection].screen;
-            // Redraw the whole screen for the new page (placeholder)
             Serial.printf("Entering screen: %d\n", current_screen);
-            drawMainMenu(EinkDisplayManager::UPDATE_FULL);
+
+            // Clear screen to eliminate ghosting before drawing new screen
+            display.wipeScreen();
+
+            // Draw the appropriate screen based on selection
+            switch (current_screen)
+            {
+            case SCREEN_BOOKS:
+                drawBooksScreen(EinkDisplayManager::UPDATE_FAST);
+                break;
+            case SCREEN_SETTINGS:
+                drawSettingsScreen(EinkDisplayManager::UPDATE_FAST);
+                break;
+            case SCREEN_WIFI:
+                drawWifiScreen(EinkDisplayManager::UPDATE_FAST);
+                break;
+            case SCREEN_CLOCK:
+                drawClockScreen(EinkDisplayManager::UPDATE_FAST);
+                break;
+            default:
+                drawMainMenu(EinkDisplayManager::UPDATE_FAST);
+                break;
+            }
             return;
         }
 
         if (old_selection != main_menu_selection)
         {
             drawMainMenu(EinkDisplayManager::UPDATE_PARTIAL);
+        }
+    }
+    else
+    {
+        // Handle button presses on sub-screens based on navigation strategy
+        if (button == 3) // UP button - always goes back
+        {
+            current_screen = SCREEN_MAIN_MENU;
+            Serial.println("UP pressed - returning to main menu");
+            
+            // Clear screen to eliminate ghosting before returning to main menu
+            display.wipeScreen();
+            drawMainMenu(EinkDisplayManager::UPDATE_FAST);
+        }
+        else if (button == 2) // SELECT button - context-specific action
+        {
+            handleSelectAction();
+        }
+        else if (button == 1) // DOWN button - context-specific navigation
+        {
+            handleDownAction();
         }
     }
 }
@@ -116,6 +159,9 @@ void drawMainMenu(EinkDisplayManager::DisplayUpdateMode mode)
         }
     }
 
+    // Draw button hints for main menu
+    drawButtonHints("Up", "Select", "Down");
+    
     display.endDrawing();
     display.update(mode);
 }
@@ -142,4 +188,165 @@ void drawStatusBar()
     display.m_display.print(time_str);
 
     display.m_display.drawLine(0, 20, display.m_display.width(), 20, GxEPD_BLACK);
+}
+
+void drawButtonHints(const char* leftHint, const char* centerHint, const char* rightHint)
+{
+    int screenWidth = display.m_display.width();
+    int bottomY = display.m_display.height() - 5;
+    
+    display.m_display.setFont(&FreeMonoBold9pt7b);
+    
+    // Left hint (UP button)
+    display.m_display.setCursor(5, bottomY);
+    display.m_display.print("[UP: ");
+    display.m_display.print(leftHint);
+    display.m_display.print("]");
+    
+    // Center hint (SELECT button)
+    String centerText = String("[SEL: ") + centerHint + "]";
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.m_display.getTextBounds(centerText.c_str(), 0, 0, &x1, &y1, &w, &h);
+    display.m_display.setCursor((screenWidth - w) / 2, bottomY);
+    display.m_display.print(centerText);
+    
+    // Right hint (DOWN button)
+    String rightText = String("[DN: ") + rightHint + "]";
+    display.m_display.getTextBounds(rightText.c_str(), 0, 0, &x1, &y1, &w, &h);
+    display.m_display.setCursor(screenWidth - w - 5, bottomY);
+    display.m_display.print(rightText);
+}
+
+void handleSelectAction()
+{
+    Serial.printf("SELECT pressed on screen: %d\n", current_screen);
+    
+    switch (current_screen)
+    {
+        case SCREEN_BOOKS:
+            // Future: Open book selection or reading interface
+            Serial.println("Books: SELECT action - placeholder");
+            break;
+            
+        case SCREEN_SETTINGS:
+            // Future: Enter settings menu
+            Serial.println("Settings: SELECT action - placeholder");
+            break;
+            
+        case SCREEN_WIFI:
+            // Toggle WiFi connection
+            Serial.println("WiFi: Toggling connection");
+            // TODO: Implement WiFi toggle
+            drawWifiScreen(EinkDisplayManager::UPDATE_PARTIAL);
+            break;
+            
+        case SCREEN_CLOCK:
+            // Future: Enter time setting mode
+            Serial.println("Clock: SELECT action - placeholder");
+            break;
+            
+        default:
+            break;
+    }
+}
+
+void handleDownAction()
+{
+    Serial.printf("DOWN pressed on screen: %d\n", current_screen);
+    
+    switch (current_screen)
+    {
+        case SCREEN_BOOKS:
+            // Future: Next book or page
+            Serial.println("Books: DOWN action - placeholder");
+            break;
+            
+        case SCREEN_SETTINGS:
+            // Future: Next setting item
+            Serial.println("Settings: DOWN action - placeholder");
+            break;
+            
+        case SCREEN_WIFI:
+            // Scan for networks
+            Serial.println("WiFi: Scanning for networks");
+            // TODO: Implement WiFi scan
+            break;
+            
+        case SCREEN_CLOCK:
+            // Future: Change time format
+            Serial.println("Clock: DOWN action - placeholder");
+            break;
+            
+        default:
+            break;
+    }
+}
+
+// --- Screen Drawing Functions ---
+
+void drawBooksScreen(EinkDisplayManager::DisplayUpdateMode mode)
+{
+    display.startDrawing();
+    drawStatusBar();
+    
+    display.m_display.setFont(&FreeMonoBold18pt7b);
+    display.drawCenteredText("Books", 100, &FreeMonoBold18pt7b);
+    display.drawCenteredText("Coming Soon...", 150, &FreeMonoBold12pt7b);
+    
+    // Draw button hints at bottom
+    drawButtonHints("Back", "OK", "Next");
+    
+    display.endDrawing();
+    display.update(mode);
+}
+
+void drawSettingsScreen(EinkDisplayManager::DisplayUpdateMode mode)
+{
+    display.startDrawing();
+    drawStatusBar();
+    
+    display.m_display.setFont(&FreeMonoBold18pt7b);
+    display.drawCenteredText("Settings", 100, &FreeMonoBold18pt7b);
+    display.drawCenteredText("Coming Soon...", 150, &FreeMonoBold12pt7b);
+    
+    // Draw button hints
+    drawButtonHints("Back", "OK", "Next");
+    
+    display.endDrawing();
+    display.update(mode);
+}
+
+void drawWifiScreen(EinkDisplayManager::DisplayUpdateMode mode)
+{
+    display.startDrawing();
+    drawStatusBar();
+    
+    display.m_display.setFont(&FreeMonoBold18pt7b);
+    display.drawCenteredText("WiFi", 100, &FreeMonoBold18pt7b);
+    
+    String status = isWifiConnected() ? "Connected" : "Disconnected";
+    display.drawCenteredText(status.c_str(), 150, &FreeMonoBold12pt7b);
+    
+    // Draw button hints
+    drawButtonHints("Back", "Toggle", "Scan");
+    
+    display.endDrawing();
+    display.update(mode);
+}
+
+void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode)
+{
+    display.startDrawing();
+    drawStatusBar();
+    
+    display.m_display.setFont(&FreeMonoBold18pt7b);
+    display.drawCenteredText("Clock", 100, &FreeMonoBold18pt7b);
+    display.drawCenteredText("Coming Soon...", 150, &FreeMonoBold12pt7b);
+    
+    // Draw button hints
+    drawButtonHints("Back", "Set", "Format");
+    
+    display.endDrawing();
+    display.update(mode);
 }

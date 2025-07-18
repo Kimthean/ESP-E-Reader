@@ -34,6 +34,9 @@ public:
     void drawCenteredText(const char *text, int y, const GFXfont *font);
     void drawBatteryIcon(int x, int y, float battery_voltage, bool charging);
     void drawWifiIcon(int x, int y, bool connected);
+    
+    // Screen clearing function to eliminate ghosting without flicker
+    void wipeScreen();
 
 private:
     struct DisplayState
