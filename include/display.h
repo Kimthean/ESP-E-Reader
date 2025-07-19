@@ -2,9 +2,13 @@
 #define DISPLAY_H
 
 #include <GxEPD2_BW.h>
+
 #include <Fonts/FreeMono9pt7b.h>
 #include <Fonts/FreeMono12pt7b.h>
 #include <Fonts/FreeMono18pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSans12pt7b.h>
+#include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold18pt7b.h>
@@ -37,10 +41,10 @@ public:
     void drawCenteredText(const char *text, int y, const GFXfont *font);
     void drawBatteryIcon(int x, int y, float battery_voltage, bool charging);
     void drawWifiIcon(int x, int y, bool connected);
-    
+
     // Screen clearing function to eliminate ghosting without flicker
     void wipeScreen();
-    
+
     // Reset partial update counter (useful during active navigation)
     void resetPartialUpdateCount();
 

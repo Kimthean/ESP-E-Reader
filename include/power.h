@@ -37,6 +37,7 @@ void printPowerStatus();
 // Power state management
 void setLowPowerMode(bool enable);
 void optimizePowerConsumption();
+void enableThermalProtection(); // Manual thermal protection activation
 
 // Wake up handling
 void handleWakeup();

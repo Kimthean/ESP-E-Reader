@@ -266,11 +266,8 @@ void WiFiScreen::stopHotspot()
     WiFi.softAPdisconnect(true);
     apModeActive = false;
 
-    // Try to connect to saved network if available
-    if (savedConfig.isConfigured && !savedConfig.savedNetworks.empty())
-    {
-        connectToNetwork(savedConfig.savedNetworks[0].ssid, savedConfig.savedNetworks[0].password);
-    }
+    // Auto-connect disabled - user must manually connect after hotspot stops
+    Serial.println("[WiFi] Hotspot stopped. Manual connection required.");
 }
 
 void WiFiScreen::setupWebServer()
@@ -634,16 +631,17 @@ void WiFiScreen::loadWiFiConfig()
                       return a.priority > b.priority;
                   });
 
-        // Auto-connect to highest priority network that has autoConnect enabled
-        for (size_t i = 0; i < savedConfig.savedNetworks.size(); i++)
-        {
-            if (savedConfig.savedNetworks[i].autoConnect)
-            {
-                Serial.println("[WiFi] Auto-connecting to: " + savedConfig.savedNetworks[i].ssid);
-                connectToNetwork(savedConfig.savedNetworks[i].ssid, savedConfig.savedNetworks[i].password);
-                break;
-            }
-        }
+        // Auto-connect disabled - user must manually connect
+        Serial.println("[WiFi] Auto-connect disabled. Networks loaded but not connecting automatically.");
+        // for (size_t i = 0; i < savedConfig.savedNetworks.size(); i++)
+        // {
+        //     if (savedConfig.savedNetworks[i].autoConnect)
+        //     {
+        //         Serial.println("[WiFi] Auto-connecting to: " + savedConfig.savedNetworks[i].ssid);
+        //         connectToNetwork(savedConfig.savedNetworks[i].ssid, savedConfig.savedNetworks[i].password);
+        //         break;
+        //     }
+        // }
     }
 
     Serial.println("[WiFi] Loaded " + String(savedConfig.savedNetworks.size()) + " networks");
@@ -657,15 +655,10 @@ void WiFiScreen::toggleWiFi()
     }
     else if (savedConfig.isConfigured && !savedConfig.savedNetworks.empty())
     {
-        // Try to connect to highest priority network with autoConnect enabled
-        for (const auto &network : savedConfig.savedNetworks)
-        {
-            if (network.autoConnect)
-            {
-                connectToNetwork(network.ssid, network.password);
-                break;
-            }
-        }
+        // Show saved networks for manual selection instead of auto-connecting
+        showSavedNetworksList = true;
+        selectedSavedNetworkIndex = 0;
+        Serial.println("[WiFi] Showing saved networks for manual selection");
     }
     else
     {

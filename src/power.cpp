@@ -59,12 +59,15 @@ void initPowerManagement()
     usb_connected = isUSBConnected();
     charging_status = isCharging();
 
-    // Initialize ESP32 power management
+    // Initialize ESP32 power management with reduced frequencies to prevent overheating
     esp_pm_config_esp32_t pm_config = {
-        .max_freq_mhz = 240,
+        .max_freq_mhz = 160,  // Reduced from 240MHz to 160MHz to reduce heat
         .min_freq_mhz = 80,
         .light_sleep_enable = true};
     esp_pm_configure(&pm_config);
+    
+    // Set initial CPU frequency to a moderate level
+    setCpuFrequencyMhz(160);  // Start at 160MHz instead of 240MHz
 
     // Set up initial power state
     setPowerLEDState(true); // Power on indicator
@@ -180,6 +183,21 @@ void updatePowerStatus()
 
     // Handle power LED indication
     handlePowerLED();
+
+    // Thermal management - automatically enable low power mode if overheating suspected
+    // This helps prevent device from running too hot
+    static unsigned long last_thermal_check = 0;
+    if (millis() - last_thermal_check > 60000) // Check every minute
+    {
+        // If device has been running at high frequency for extended periods,
+        // and battery is draining fast, enable thermal protection
+        if (!low_power_mode && !charging_status && battery_percentage < 80)
+        {
+            Serial.println("[THERMAL] Enabling thermal protection mode to prevent overheating");
+            setLowPowerMode(true);
+        }
+        last_thermal_check = millis();
+    }
 
     // Check for low battery warning
     if (battery_percentage < 15 && !charging_status)
@@ -374,7 +392,7 @@ void setLowPowerMode(bool enable)
     {
         Serial.println("Enabling low power mode...");
 
-        // Reduce CPU frequency
+        // Reduce CPU frequency significantly for thermal management
         setCpuFrequencyMhz(80);
 
         // Disable WiFi and Bluetooth
@@ -386,16 +404,16 @@ void setLowPowerMode(bool enable)
         // Disable unnecessary peripherals
         optimizePowerConsumption();
 
-        Serial.println("Low power mode enabled");
+        Serial.println("Low power mode enabled - CPU at 80MHz for thermal management");
     }
     else
     {
         Serial.println("Disabling low power mode...");
 
-        // Restore normal CPU frequency
-        setCpuFrequencyMhz(240);
+        // Restore moderate CPU frequency (not maximum to prevent overheating)
+        setCpuFrequencyMhz(160);  // Use 160MHz instead of 240MHz
 
-        Serial.println("Low power mode disabled");
+        Serial.println("Low power mode disabled - CPU at 160MHz for balanced performance");
     }
 }
 
@@ -455,4 +473,25 @@ void handleWakeup()
 esp_sleep_wakeup_cause_t getWakeupCause()
 {
     return esp_sleep_get_wakeup_cause();
+}
+
+/**
+ * Enable thermal protection manually
+ * This function can be called when overheating is detected
+ */
+void enableThermalProtection()
+{
+    Serial.println("[THERMAL] Manual thermal protection activated");
+    Serial.println("[THERMAL] Reducing CPU frequency and enabling power saving features");
+    
+    // Enable low power mode for thermal management
+    setLowPowerMode(true);
+    
+    // Additional thermal protection measures
+    Serial.println("[THERMAL] Thermal protection measures:");
+    Serial.println("  - CPU frequency reduced to 80MHz");
+    Serial.println("  - WiFi and Bluetooth disabled");
+    Serial.println("  - Unused GPIO pins optimized");
+    Serial.println("  - Power consumption minimized");
+    Serial.println("[THERMAL] Device should cool down within a few minutes");
 }

@@ -84,6 +84,10 @@ void loop()
     Serial.println("[MAIN] Calling enterDeepSleep(0)");
     enterDeepSleep(0);
   }
+  
+  // Add small delay to prevent CPU from running at maximum speed
+  // This significantly reduces power consumption and heat generation
+  delay(10); // 10ms delay gives ~100Hz loop frequency, sufficient for UI responsiveness
 }
 
 void resetActivityTimer()

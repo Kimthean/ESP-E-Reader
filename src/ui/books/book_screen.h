@@ -3,6 +3,7 @@
 
 #include "../../../include/display.h"
 #include "../../../include/storage.h"
+#include "../../../include/epub_parser.h"
 #include <vector>
 #include <FS.h>
 #include <SD.h>
@@ -21,9 +22,19 @@ struct BookInfo
     String filename;
     String title;
     String author;
+    String publisher;
+    String language;
     BookFormat format;
     size_t fileSize;
     bool isValid;
+    
+    // ePub-specific fields
+    std::vector<String> chapters;
+    std::vector<size_t> chapterSizes;
+    String coverImagePath;
+    int totalChapters;
+    
+    BookInfo() : fileSize(0), isValid(false), totalChapters(0) {}
 };
 
 // Text rendering settings
@@ -46,6 +57,27 @@ struct PageInfo
     String content;
 };
 
+// Chunk-based reading structure
+struct BookChunk
+{
+    size_t filePosition;
+    size_t chunkSize;
+    String content;
+    bool isLoaded;
+};
+
+// Book streaming manager
+struct BookStream
+{
+    String filepath;
+    size_t fileSize;
+    size_t chunkSize;
+    size_t currentPosition;
+    std::vector<size_t> pagePositions; // File positions for each page start
+    BookChunk currentChunk;
+    bool isOpen;
+};
+
 // Book menu dialog structure
 struct BookMenuDialog
 {
@@ -53,6 +85,17 @@ struct BookMenuDialog
     int selectedOption;
     std::vector<String> options;
     String title;
+};
+
+// Reading history structure
+struct ReadingHistory
+{
+    String filepath;
+    String filename;
+    int lastPage;
+    size_t lastPosition;
+    String lastReadTime;
+    float readingProgress; // Percentage (0.0 - 1.0)
 };
 
 class BookScreen
@@ -122,6 +165,14 @@ public:
     // Static utility methods
     std::vector<BookInfo> scanBooksDirectory();
     static BookFormat detectBookFormat(const String &filename);
+    
+    // Reading history management
+    bool saveReadingHistory();
+    bool loadReadingHistory(const String &filepath);
+    ReadingHistory getReadingHistory(const String &filepath);
+    std::vector<ReadingHistory> getAllReadingHistory();
+    bool clearReadingHistory(const String &filepath = "");
+    float calculateReadingProgress() const;
 
 private:
     // UI state
@@ -140,12 +191,21 @@ private:
     BookInfo m_currentBookInfo;
     TextSettings m_textSettings;
     PageInfo m_pageInfo;
-    String m_bookContent;
-    std::vector<String> m_pages;
+    String m_bookContent; // Legacy - will be phased out
+    std::vector<String> m_pages; // Legacy - will be phased out
     bool m_bookLoaded;
+    
+    // Streaming book data
+    BookStream m_bookStream;
+    static const size_t CHUNK_SIZE = 2048; // 2KB chunks
+    int m_estimatedTotalPages; // Estimated total pages for UI display
     
     // Book menu dialog
     BookMenuDialog m_bookMenu;
+    
+    // Reading history
+    std::vector<ReadingHistory> m_readingHistory;
+    static const String HISTORY_FILE;
     
     // Drawing helpers
     void drawHeader();
@@ -158,11 +218,21 @@ private:
     // Book management helpers
     bool loadTxtBook(const String &filepath);
     bool loadEpubBook(const String &filepath);
-    void paginateContent();
+    // void paginateContent(); // Legacy - replaced by streaming approach
     void calculatePages();
     String extractTextFromPage(const String &content, int startPos, int maxChars);
     int calculateWordsPerPage();
     void initializeTextSettings();
+    
+    // Streaming book management
+    bool initializeBookStream(const String &filepath);
+    void closeBookStream();
+    bool loadChunkAtPosition(size_t position);
+    String getPageContentStreaming(int pageNumber);
+    bool buildPageIndex();
+    bool expandPageIndex(int targetPage); // Dynamically expand page index
+    size_t findNextPageBreak(size_t startPosition);
+    String readChunkFromFile(size_t position, size_t size);
     
     // Navigation helpers
     void ensureValidBookSelection();
@@ -173,6 +243,7 @@ private:
     
     // Utility helpers
     String formatFileSize(size_t bytes);
+    String extractTitleFromFilename(const String &filepath);
     String getBookIcon(const BookInfo &book);
 };
 
