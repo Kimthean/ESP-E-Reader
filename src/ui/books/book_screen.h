@@ -27,13 +27,13 @@ struct BookInfo
     BookFormat format;
     size_t fileSize;
     bool isValid;
-    
+
     // ePub-specific fields
     std::vector<String> chapters;
     std::vector<size_t> chapterSizes;
     String coverImagePath;
     int totalChapters;
-    
+
     BookInfo() : fileSize(0), isValid(false), totalChapters(0) {}
 };
 
@@ -66,6 +66,19 @@ struct BookChunk
     bool isLoaded;
 };
 
+// EPUB chapter reference for streaming
+struct EpubChapterRef
+{
+    String id;
+    String href;
+    String title;
+    int order;
+    size_t startPage;    // Global page number where chapter starts
+    size_t pageCount;    // Number of pages in this chapter
+    String tempFilePath; // Path to extracted chapter file on SD
+    bool isExtracted;    // Whether chapter is extracted to temp file
+};
+
 // Book streaming manager
 struct BookStream
 {
@@ -76,6 +89,14 @@ struct BookStream
     std::vector<size_t> pagePositions; // File positions for each page start
     BookChunk currentChunk;
     bool isOpen;
+
+    // EPUB streaming fields
+    bool isEpubStream;
+    String tempDir;                          // Temporary directory for EPUB extraction
+    std::vector<EpubChapterRef> chapterRefs; // Chapter references for streaming
+    int currentChapterIndex;                 // Currently loaded chapter
+    File currentTempFile;                    // Current chapter temp file
+    size_t globalPageOffset;                 // Page offset for current chapter
 };
 
 // Book menu dialog structure
@@ -96,6 +117,18 @@ struct ReadingHistory
     size_t lastPosition;
     String lastReadTime;
     float readingProgress; // Percentage (0.0 - 1.0)
+};
+
+// Progress dialog structure
+struct ProgressDialog
+{
+    bool isVisible;
+    String title;
+    String message;
+    float progress; // 0.0 to 1.0
+    bool canAbort;
+    bool abortRequested;
+    unsigned long lastUpdateTime;
 };
 
 class BookScreen
@@ -135,22 +168,29 @@ public:
     void hideBookMenu();
     void handleBookMenuSelect();
 
+    // Progress dialog control
+    void showProgressDialog(const String &title, const String &message, bool canAbort = true);
+    void updateProgressDialog(float progress, const String &message = "");
+    void hideProgressDialog();
+    bool isProgressDialogAborted() const;
+
     // State management
-    enum ScreenMode {
+    enum ScreenMode
+    {
         MODE_BOOK_LIST,
         MODE_BOOK_READER,
         MODE_BOOK_MENU
     };
-    
+
     ScreenMode getCurrentMode() const;
     void setMode(ScreenMode mode);
-    
+
     // Book list management
     void refreshBookList();
     std::vector<BookInfo> getAvailableBooks() const;
     int getSelectedBookIndex() const;
     void setSelectedBookIndex(int index);
-    
+
     // Book list pagination
     void nextBookPage();
     void previousBookPage();
@@ -165,7 +205,7 @@ public:
     // Static utility methods
     std::vector<BookInfo> scanBooksDirectory();
     static BookFormat detectBookFormat(const String &filename);
-    
+
     // Reading history management
     bool saveReadingHistory();
     bool loadReadingHistory(const String &filepath);
@@ -180,41 +220,45 @@ private:
     int m_selectedBookIndex;
     bool m_isLoading;
     bool m_isInitialized;
-    
+
     // Book list pagination
     int m_currentBookPage;
     int m_booksPerPage;
     int m_totalBookPages;
-    
+
     // Book data
     std::vector<BookInfo> m_availableBooks;
     BookInfo m_currentBookInfo;
     TextSettings m_textSettings;
     PageInfo m_pageInfo;
-    String m_bookContent; // Legacy - will be phased out
+    String m_bookContent;        // Legacy - will be phased out
     std::vector<String> m_pages; // Legacy - will be phased out
     bool m_bookLoaded;
-    
+
     // Streaming book data
     BookStream m_bookStream;
     static const size_t CHUNK_SIZE = 2048; // 2KB chunks
-    int m_estimatedTotalPages; // Estimated total pages for UI display
-    
+    int m_estimatedTotalPages;             // Estimated total pages for UI display
+
     // Book menu dialog
     BookMenuDialog m_bookMenu;
-    
+
+    // Progress dialog
+    ProgressDialog m_progressDialog;
+
     // Reading history
     std::vector<ReadingHistory> m_readingHistory;
     static const String HISTORY_FILE;
-    
+
     // Drawing helpers
     void drawHeader();
     void drawBookListContent();
     void drawBookReaderContent();
     void drawBookMenuDialog();
+    void drawProgressDialog();
     void drawLoadingIndicator();
     void drawStatusBar();
-    
+
     // Book management helpers
     bool loadTxtBook(const String &filepath);
     bool loadEpubBook(const String &filepath);
@@ -223,24 +267,38 @@ private:
     String extractTextFromPage(const String &content, int startPos, int maxChars);
     int calculateWordsPerPage();
     void initializeTextSettings();
-    
+
     // Streaming book management
     bool initializeBookStream(const String &filepath);
     void closeBookStream();
     bool loadChunkAtPosition(size_t position);
     String getPageContentStreaming(int pageNumber);
+    String getPageContentLoaded(int pageNumber);
     bool buildPageIndex();
     bool expandPageIndex(int targetPage); // Dynamically expand page index
     size_t findNextPageBreak(size_t startPosition);
     String readChunkFromFile(size_t position, size_t size);
-    
+
+    // EPUB streaming management
+    bool initializeEpubStream(const String &filepath);
+    bool extractChapterToTemp(int chapterIndex);
+    bool loadChapterForStreaming(int chapterIndex);
+    String getEpubPageContent(int pageNumber);
+    bool buildEpubPageIndex();
+    bool expandEpubPageIndex(int targetPage);
+    int findChapterForPage(int pageNumber);
+    bool preloadAdjacentChapters(int chapterIndex);
+    void cleanupTempFiles();
+    String createTempFilePath(int chapterIndex);
+    bool ensureChapterExtracted(int chapterIndex);
+
     // Navigation helpers
     void ensureValidBookSelection();
     void scrollToSelection();
-    
+
     // Menu helpers
     void initializeBookMenu();
-    
+
     // Utility helpers
     String formatFileSize(size_t bytes);
     String extractTitleFromFilename(const String &filepath);

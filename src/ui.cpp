@@ -9,8 +9,10 @@
 #include "ui/books/book_screen.h"
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_task_wdt.h>
 
 extern EinkDisplayManager display;
+extern bool low_power_mode; // Access to power management state
 
 // Screen instances
 WiFiScreen wifiScreen;
@@ -19,9 +21,15 @@ BookScreen bookScreen;
 
 // --- UI State Management ---
 AppScreen current_screen = SCREEN_MAIN_MENU;
-int main_menu_selection = 0; // 0: Books, 1: Settings, 2: Wifi, 3: Clock
+AppScreen previous_screen = SCREEN_MAIN_MENU; // Store previous screen for clock saver exit
+int main_menu_selection = 0;                  // 0: Books, 1: Settings, 2: Wifi, 3: Clock
 unsigned long last_status_update = 0;
 const unsigned long STATUS_UPDATE_INTERVAL = 300000; // 5 minutes
+
+// Clock saver state
+static bool clock_saver_active = false;
+static unsigned long last_clock_update = 0;
+const unsigned long CLOCK_UPDATE_INTERVAL = 60000; // Update every minute
 
 // --- Helper Functions ---
 bool isWifiConnected()
@@ -45,6 +53,13 @@ MenuItem main_menu_items[] = {
 };
 const int main_menu_item_count = sizeof(main_menu_items) / sizeof(main_menu_items[0]);
 
+// Settings menu state
+static int settings_menu_selection = 0;
+static const int settings_menu_item_count = 2;
+static const char *settings_menu_items[] = {
+    "Time Sync",
+    "Back to Main Menu"};
+
 void initializeUI()
 {
     // Clear screen to eliminate any startup ghosting
@@ -52,6 +67,9 @@ void initializeUI()
 
     // Reload WiFi configuration now that SPIFFS is initialized
     wifiScreen.loadWiFiConfig();
+    
+    // Attempt auto-connection to saved networks after initialization
+    wifiScreen.autoConnectToSavedNetworks();
 
     // drawCurrentScreen(EinkDisplayManager::UPDATE_FULL);
 }
@@ -85,6 +103,9 @@ void drawCurrentScreen(EinkDisplayManager::DisplayUpdateMode mode)
     case SCREEN_FILES:
         drawFilesScreen(mode);
         break;
+    case SCREEN_CLOCK_SAVER:
+        drawClockSaverScreen(mode);
+        break;
     default:
         current_screen = SCREEN_MAIN_MENU;
         drawMainMenu(mode);
@@ -104,6 +125,24 @@ void updateUI()
         last_status_update = millis();
     }
 
+    // Update clock saver screen every minute
+    if (clock_saver_active && millis() - last_clock_update > CLOCK_UPDATE_INTERVAL)
+    {
+        Serial.println("[UI] Updating clock saver display...");
+
+        // Add safety check to prevent crashes during low power mode
+        if (!low_power_mode)
+        {
+            drawClockSaverScreen(EinkDisplayManager::UPDATE_PARTIAL);
+        }
+        else
+        {
+            Serial.println("[UI] Skipping clock update during low power mode");
+        }
+
+        last_clock_update = millis();
+    }
+
     // Update WiFi screen if active (for web server handling)
     if (current_screen == SCREEN_WIFI)
     {
@@ -115,6 +154,13 @@ void handleButtonPress(int button)
 {
     // Reset activity timer on any button press
     resetActivityTimer();
+
+    // Exit clock saver mode on any button press
+    if (clock_saver_active)
+    {
+        exitClockSaverMode();
+        return;
+    }
 
     // Reset partial update counter to prevent auto-wipe during navigation
     display.resetPartialUpdateCount();
@@ -151,8 +197,9 @@ void handleButtonPress(int button)
                 drawWifiScreen(EinkDisplayManager::UPDATE_FAST);
                 break;
             case SCREEN_CLOCK:
-                drawClockScreen(EinkDisplayManager::UPDATE_FAST);
-                break;
+                // Go directly to clock screen saver
+                enterClockSaverMode();
+                return; // Don't continue with normal screen drawing
             case SCREEN_FILES:
                 drawFilesScreen(EinkDisplayManager::UPDATE_FAST);
                 break;
@@ -198,6 +245,16 @@ void handleButtonPress(int button)
             {
                 // Handle up action in book menu
                 bookScreen.handleUpAction();
+            }
+            else if (current_screen == SCREEN_SETTINGS)
+            {
+                // Navigate up in settings menu or go back to main menu
+                int old_selection = settings_menu_selection;
+                settings_menu_selection = (settings_menu_selection - 1 + settings_menu_item_count) % settings_menu_item_count;
+                if (old_selection != settings_menu_selection)
+                {
+                    drawSettingsScreen(EinkDisplayManager::UPDATE_PARTIAL);
+                }
             }
             else
             {
@@ -400,8 +457,34 @@ void handleSelectAction()
         break;
 
     case SCREEN_SETTINGS:
-        // Future: Enter settings menu
-        Serial.println("Settings: SELECT action - placeholder");
+        // Handle settings menu selection
+        if (settings_menu_selection == 0) // Time Sync
+        {
+            if (isWifiConnected())
+            {
+                Serial.println("[Settings] Manual NTP sync requested");
+                if (syncTimeWithNTP())
+                {
+                    Serial.println("[Settings] Manual sync successful");
+                }
+                else
+                {
+                    Serial.println("[Settings] Manual sync failed");
+                }
+                // Redraw screen to show updated status
+                drawSettingsScreen(EinkDisplayManager::UPDATE_PARTIAL);
+            }
+            else
+            {
+                Serial.println("[Settings] Cannot sync - WiFi not connected");
+            }
+        }
+        else if (settings_menu_selection == 1) // Back to Main Menu
+        {
+            current_screen = SCREEN_MAIN_MENU;
+            display.wipeScreen();
+            drawMainMenu(EinkDisplayManager::UPDATE_FAST);
+        }
         break;
 
     case SCREEN_WIFI:
@@ -416,25 +499,8 @@ void handleSelectAction()
         break;
 
     case SCREEN_CLOCK:
-        // Manual time synchronization
-        if (isWifiConnected())
-        {
-            Serial.println("[Clock] Manual NTP sync requested");
-            if (syncTimeWithNTP())
-            {
-                Serial.println("[Clock] Manual sync successful");
-            }
-            else
-            {
-                Serial.println("[Clock] Manual sync failed");
-            }
-            // Redraw screen to show updated time status
-            drawClockScreen(EinkDisplayManager::UPDATE_PARTIAL);
-        }
-        else
-        {
-            Serial.println("[Clock] Cannot sync - WiFi not connected");
-        }
+        // Clock screen now goes directly to clock saver, no actions needed
+        Serial.println("[Clock] Already in clock saver mode");
         break;
 
     default:
@@ -464,8 +530,15 @@ void handleDownAction()
         break;
 
     case SCREEN_SETTINGS:
-        // Future: Next setting item
-        Serial.println("Settings: DOWN action - placeholder");
+        // Navigate down in settings menu
+        {
+            int old_selection = settings_menu_selection;
+            settings_menu_selection = (settings_menu_selection + 1) % settings_menu_item_count;
+            if (old_selection != settings_menu_selection)
+            {
+                drawSettingsScreen(EinkDisplayManager::UPDATE_PARTIAL);
+            }
+        }
         break;
 
     case SCREEN_WIFI:
@@ -480,8 +553,8 @@ void handleDownAction()
         break;
 
     case SCREEN_CLOCK:
-        // Future: Change time format
-        Serial.println("Clock: DOWN action - placeholder");
+        // Clock screen now goes directly to clock saver, no actions needed
+        Serial.println("[Clock] Already in clock saver mode");
         break;
 
     default:
@@ -499,8 +572,52 @@ void drawSettingsScreen(EinkDisplayManager::DisplayUpdateMode mode)
     drawStatusBar();
 
     display.m_display.setFont(&FreeMonoBold18pt7b);
-    display.drawCenteredText("Settings", 100, &FreeMonoBold18pt7b);
-    display.drawCenteredText("Coming Soon...", 150, &FreeMono12pt7b);
+    display.drawCenteredText("Settings", 80, &FreeMonoBold18pt7b);
+
+    // Draw settings menu items
+    int start_y = 120;
+    int item_height = 35;
+    int margin = 30;
+    int selection_padding = 6;
+
+    for (int i = 0; i < settings_menu_item_count; i++)
+    {
+        int y = start_y + (i * item_height);
+        const char *label = settings_menu_items[i];
+
+        display.m_display.setFont(&FreeMono12pt7b);
+
+        // Calculate text dimensions for proper centering
+        int16_t x1, y1;
+        uint16_t w, h;
+        display.m_display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+
+        // Draw selection indicator
+        if (i == settings_menu_selection)
+        {
+            int rect_x = margin;
+            int rect_y = y - h - selection_padding;
+            int rect_w = display.m_display.width() - (2 * margin);
+            int rect_h = h + (2 * selection_padding);
+
+            display.m_display.fillRect(rect_x, rect_y, rect_w, rect_h, GxEPD_BLACK);
+            display.m_display.setTextColor(GxEPD_WHITE);
+        }
+        else
+        {
+            display.m_display.setTextColor(GxEPD_BLACK);
+        }
+
+        // Center the text
+        int text_x = (display.m_display.width() - w) / 2;
+        display.m_display.setCursor(text_x, y);
+        display.m_display.print(label);
+    }
+
+    // Instructions
+    display.m_display.setFont(&FreeMono9pt7b);
+    display.m_display.setTextColor(GxEPD_BLACK);
+    display.drawCenteredText("UP/DOWN: Navigate, SELECT: Choose, UP: Back", 250, &FreeMono9pt7b);
 
     display.endDrawing();
     display.update(mode);
@@ -513,54 +630,175 @@ void drawWifiScreen(EinkDisplayManager::DisplayUpdateMode mode)
 
 void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode)
 {
-    display.startDrawing();
-    drawStatusBar();
-
-    display.m_display.setFont(&FreeMonoBold18pt7b);
-    display.drawCenteredText("Time & Date", 100, &FreeMonoBold18pt7b);
-
-    // Get current time and status
-    time_t current_time = getCurrentTime();
-    TimeStatus time_status = getTimeStatus();
-
-    // Display current time and date
-    display.m_display.setFont(&FreeMonoBold12pt7b);
-    String time_str = formatTime(current_time);
-    String date_str = formatDate(current_time);
-
-    display.drawCenteredText(time_str.c_str(), 140, &FreeMonoBold12pt7b);
-    display.drawCenteredText(date_str.c_str(), 160, &FreeMono9pt7b);
-
-    // Display time source and sync status
-    display.m_display.setFont(&FreeMono9pt7b);
-    String source_text = "Source: " + time_status.time_source;
-    display.drawCenteredText(source_text.c_str(), 190, &FreeMono9pt7b);
-
-    if (time_status.ntp_synced && time_status.last_ntp_sync > 0)
-    {
-        String last_sync = "Last NTP: " + formatTime(time_status.last_ntp_sync);
-        display.drawCenteredText(last_sync.c_str(), 210, &FreeMono9pt7b);
-    }
-    else if (isWifiConnected())
-    {
-        display.drawCenteredText("NTP: Not synced", 210, &FreeMono9pt7b);
-    }
-    else
-    {
-        display.drawCenteredText("WiFi: Disconnected", 210, &FreeMono9pt7b);
-    }
-
-    // Instructions
-    display.drawCenteredText("SELECT: Manual sync (if WiFi connected)", 250, &FreeMono9pt7b);
-    display.drawCenteredText("UP: Return to main menu", 270, &FreeMono9pt7b);
-
-    display.endDrawing();
-    display.update(mode);
+    // This function is kept for compatibility but clock menu now goes directly to clock saver
+    // If somehow called, redirect to clock saver mode
+    Serial.println("[Clock] drawClockScreen called - redirecting to clock saver");
+    enterClockSaverMode();
 }
 
 void drawFilesScreen(EinkDisplayManager::DisplayUpdateMode mode)
 {
     filesScreen.draw(mode);
+}
+
+void drawClockSaverScreen(EinkDisplayManager::DisplayUpdateMode mode)
+{
+    // Feed watchdog to prevent timeout during display operations
+    esp_task_wdt_reset();
+
+    display.startDrawing();
+
+    // Set display to horizontal orientation for clock saver
+    display.m_display.setRotation(3); // Rotate 90 degrees for horizontal layout
+
+    // Clear the screen
+    display.m_display.fillScreen(GxEPD_WHITE);
+
+    // Get current time and sensor data
+    time_t current_time = getCurrentTime();
+    SensorData sensor_data = readAllSensors();
+
+    // Format time and date
+    struct tm *timeinfo = localtime(&current_time);
+    char time_buffer[16];
+    char date_buffer[32];
+    char day_buffer[16];
+
+    // Format time in 12-hour format
+    strftime(time_buffer, sizeof(time_buffer), "%I:%M %p", timeinfo);
+    strftime(date_buffer, sizeof(date_buffer), "%B %d, %Y", timeinfo);
+    strftime(day_buffer, sizeof(day_buffer), "%A", timeinfo);
+
+    // Main time display (large, centered)
+    display.m_display.setFont(&FreeMonoBold18pt7b);
+    display.m_display.setTextColor(GxEPD_BLACK);
+
+    // Calculate center positions for horizontal layout (416x240 rotated)
+    int16_t x, y;
+    uint16_t w, h;
+
+    // Display time in center
+    display.m_display.getTextBounds(time_buffer, 0, 0, &x, &y, &w, &h);
+    display.m_display.setCursor((416 - w) / 2, 120 + h / 2);
+    display.m_display.print(time_buffer);
+
+    // Display date below time
+    display.m_display.setFont(&FreeMono12pt7b);
+    display.m_display.getTextBounds(date_buffer, 0, 0, &x, &y, &w, &h);
+    display.m_display.setCursor((416 - w) / 2, 150 + h);
+    display.m_display.print(date_buffer);
+
+    // Display day of week above time
+    display.m_display.getTextBounds(day_buffer, 0, 0, &x, &y, &w, &h);
+    display.m_display.setCursor((416 - w) / 2, 80);
+    display.m_display.print(day_buffer);
+
+    // Display sensor data on the sides
+    display.m_display.setFont(&FreeMono9pt7b);
+
+    // Left side - Temperature
+    if (sensor_data.temperature_valid)
+    {
+        char temp_str[16];
+        snprintf(temp_str, sizeof(temp_str), "%.1f°C", sensor_data.temperature);
+        display.m_display.setCursor(20, 60);
+        display.m_display.print("TEMP");
+        display.m_display.setCursor(20, 80);
+        display.m_display.print(temp_str);
+    }
+    else
+    {
+        display.m_display.setCursor(20, 60);
+        display.m_display.print("TEMP");
+        display.m_display.setCursor(20, 80);
+        display.m_display.print("--°C");
+    }
+
+    // Right side - Humidity
+    if (sensor_data.humidity_valid)
+    {
+        char hum_str[16];
+        snprintf(hum_str, sizeof(hum_str), "%.1f%%", sensor_data.humidity);
+        display.m_display.setCursor(350, 60);
+        display.m_display.print("HUMID");
+        display.m_display.setCursor(350, 80);
+        display.m_display.print(hum_str);
+    }
+    else
+    {
+        display.m_display.setCursor(350, 60);
+        display.m_display.print("HUMID");
+        display.m_display.setCursor(350, 80);
+        display.m_display.print("--%");
+    }
+
+    // Bottom status information
+    display.m_display.setFont(&FreeMono9pt7b);
+
+    // Battery status (bottom left)
+    float battery_voltage = getBatteryVoltage();
+    int battery_percentage = getBatteryPercentage();
+    char battery_str[32];
+    snprintf(battery_str, sizeof(battery_str), "Battery: %d%% (%.2fV)", battery_percentage, battery_voltage);
+    display.m_display.setCursor(20, 220);
+    display.m_display.print(battery_str);
+
+    // Clock saver indicator (bottom right)
+    display.m_display.setCursor(280, 220);
+    display.m_display.print("Press any key to exit");
+
+    // Reset rotation back to normal
+    display.m_display.setRotation(0);
+
+    display.endDrawing();
+    display.update(mode);
+}
+
+void enterClockSaverMode()
+{
+    Serial.println("[UI] Entering clock saver mode...");
+
+    // Store current screen to return to later
+    previous_screen = current_screen;
+
+    // Switch to clock saver screen
+    current_screen = SCREEN_CLOCK_SAVER;
+    clock_saver_active = true;
+    last_clock_update = millis();
+
+    // Draw the clock saver screen
+    drawClockSaverScreen(EinkDisplayManager::UPDATE_FAST);
+
+    Serial.println("[UI] Clock saver mode activated");
+}
+
+void exitClockSaverMode()
+{
+    Serial.println("[UI] Exiting clock saver mode...");
+
+    clock_saver_active = false;
+
+    // Return to main menu (safer than returning to previous screen)
+    current_screen = SCREEN_MAIN_MENU;
+
+    // Redraw the main menu
+    drawMainMenu(EinkDisplayManager::UPDATE_FULL);
+
+    Serial.println("[UI] Clock saver mode deactivated");
+}
+
+bool isInClockSaverMode()
+{
+    return clock_saver_active;
+}
+
+void handleMainMenuLongPress()
+{
+    Serial.println("[UI] Long press detected in main menu - entering clock screen saver");
+    if (current_screen == SCREEN_MAIN_MENU && !clock_saver_active)
+    {
+        enterClockSaverMode();
+    }
 }
 
 // Book reader and menu drawing is now handled by BookScreen class

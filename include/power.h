@@ -39,6 +39,9 @@ void setLowPowerMode(bool enable);
 void optimizePowerConsumption();
 void enableThermalProtection(); // Manual thermal protection activation
 
+// Power state variables
+extern bool low_power_mode; // Current low power mode state
+
 // Wake up handling
 void handleWakeup();
 esp_sleep_wakeup_cause_t getWakeupCause();

@@ -45,6 +45,7 @@ public:
     // Configuration management
     void saveWiFiConfig(const String &ssid, const String &password);
     void loadWiFiConfig();
+    void autoConnectToSavedNetworks();
 
     // Settings management
     void showSavedNetworks();

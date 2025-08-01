@@ -14,6 +14,7 @@ enum AppScreen
     SCREEN_WIFI,
     SCREEN_CLOCK,
     SCREEN_FILES,
+    SCREEN_CLOCK_SAVER, // New screen saver mode
 };
 
 /**
@@ -77,6 +78,27 @@ void drawWifiScreen(EinkDisplayManager::DisplayUpdateMode mode);
 void drawClockScreen(EinkDisplayManager::DisplayUpdateMode mode);
 
 /**
+ * @brief Draws the horizontal clock screen saver with sensors.
+ * @param mode The display update mode to use.
+ */
+void drawClockSaverScreen(EinkDisplayManager::DisplayUpdateMode mode);
+
+/**
+ * @brief Enters clock saver mode instead of deep sleep.
+ */
+void enterClockSaverMode();
+
+/**
+ * @brief Exits clock saver mode and returns to main menu.
+ */
+void exitClockSaverMode();
+
+/**
+ * @brief Checks if currently in clock saver mode.
+ */
+bool isInClockSaverMode();
+
+/**
  * @brief Draws the Files screen.
  * @param mode The display update mode to use.
  */
@@ -93,5 +115,10 @@ void handleSelectAction();
  * @brief Handles DOWN button press based on current screen context.
  */
 void handleDownAction();
+
+/**
+ * @brief Handles long press in main menu to go directly to clock screen saver.
+ */
+void handleMainMenuLongPress();
 
 #endif // UI_H

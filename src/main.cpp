@@ -14,7 +14,7 @@ EinkDisplayManager display;
 // --- Timers ---
 unsigned long last_activity_time = 0;
 unsigned long last_time_update = 0;
-const unsigned long DEEP_SLEEP_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+const unsigned long DEEP_SLEEP_TIMEOUT = 30 * 1000;   // 30 seconds for testing
 const unsigned long TIME_UPDATE_INTERVAL = 30 * 1000; // Check for time updates every 30 seconds
 
 /**
@@ -52,10 +52,15 @@ void setup()
   initializeSensors();
   initStorage();
   initializeUI();
-  
+
   // Initialize time synchronization system
   initTimeSync();
 
+  last_activity_time = millis();
+}
+
+void resetActivityTimer()
+{
   last_activity_time = millis();
 }
 
@@ -67,30 +72,27 @@ void loop()
   updateButtons();
   updateUI();
   updatePowerStatus();
-  
+
   // Periodic time synchronization check
   if (millis() - last_time_update > TIME_UPDATE_INTERVAL)
   {
     updateTimeFromNTP();
     last_time_update = millis();
   }
-  
-  if (millis() - last_activity_time > DEEP_SLEEP_TIMEOUT)
+
+  // Only check for inactivity timeout if not already in clock saver mode
+  if (!isInClockSaverMode() && millis() - last_activity_time > DEEP_SLEEP_TIMEOUT)
   {
-    Serial.println("[MAIN] Inactivity timeout detected, entering deep sleep...");
+    Serial.println("[MAIN] Inactivity timeout detected, entering clock saver mode...");
     Serial.printf("[MAIN] Last activity was %lu ms ago (timeout: %lu ms)\n",
                   millis() - last_activity_time, DEEP_SLEEP_TIMEOUT);
-    display.sleep();
-    Serial.println("[MAIN] Calling enterDeepSleep(0)");
-    enterDeepSleep(0);
+
+    enterClockSaverMode();
+    // Reset activity timer to prevent immediate re-entry
+    resetActivityTimer();
   }
-  
+
   // Add small delay to prevent CPU from running at maximum speed
   // This significantly reduces power consumption and heat generation
   delay(10); // 10ms delay gives ~100Hz loop frequency, sufficient for UI responsiveness
-}
-
-void resetActivityTimer()
-{
-  last_activity_time = millis();
 }

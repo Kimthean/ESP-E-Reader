@@ -32,6 +32,7 @@ struct WiFiConfig
 {
     std::vector<SavedWiFiNetwork> savedNetworks;
     int activeNetworkIndex; // Currently connected network index (-1 if none)
+    String lastConnectedSSID; // Last successfully connected network SSID
     bool isConfigured;
 };
 
@@ -61,6 +62,8 @@ WiFiScreen::WiFiScreen()
 
     // Load saved WiFi configuration
     loadWiFiConfig();
+    
+    // Note: Auto-connection will be triggered from initializeUI() after SPIFFS is ready
 }
 
 void WiFiScreen::draw(EinkDisplayManager::DisplayUpdateMode mode)
@@ -524,6 +527,9 @@ void WiFiScreen::saveWiFiConfig(const String &ssid, const String &password)
         netObj["priority"] = network.priority;
     }
 
+    // Save last connected SSID
+    doc["lastConnectedSSID"] = savedConfig.lastConnectedSSID;
+
     String configJson;
     serializeJson(doc, configJson);
 
@@ -555,6 +561,7 @@ void WiFiScreen::loadWiFiConfig()
     // Clear existing configuration
     savedConfig.savedNetworks.clear();
     savedConfig.activeNetworkIndex = -1;
+    savedConfig.lastConnectedSSID = "";
     savedConfig.isConfigured = false;
 
     // Ensure SD card is powered on for loading config
@@ -604,6 +611,13 @@ void WiFiScreen::loadWiFiConfig()
         return;
     }
 
+    // Load last connected SSID if available
+    if (doc.containsKey("lastConnectedSSID"))
+    {
+        savedConfig.lastConnectedSSID = doc["lastConnectedSSID"].as<String>();
+        Serial.println("[WiFi] Last connected SSID: " + savedConfig.lastConnectedSSID);
+    }
+
     // Load all saved networks
     for (JsonObject network : networks)
     {
@@ -631,17 +645,7 @@ void WiFiScreen::loadWiFiConfig()
                       return a.priority > b.priority;
                   });
 
-        // Auto-connect disabled - user must manually connect
-        Serial.println("[WiFi] Auto-connect disabled. Networks loaded but not connecting automatically.");
-        // for (size_t i = 0; i < savedConfig.savedNetworks.size(); i++)
-        // {
-        //     if (savedConfig.savedNetworks[i].autoConnect)
-        //     {
-        //         Serial.println("[WiFi] Auto-connecting to: " + savedConfig.savedNetworks[i].ssid);
-        //         connectToNetwork(savedConfig.savedNetworks[i].ssid, savedConfig.savedNetworks[i].password);
-        //         break;
-        //     }
-        // }
+        Serial.println("[WiFi] Networks loaded successfully. Auto-connection will be handled by autoConnectToSavedNetworks().");
     }
 
     Serial.println("[WiFi] Loaded " + String(savedConfig.savedNetworks.size()) + " networks");
@@ -721,6 +725,39 @@ void WiFiScreen::connectToNetwork(const String &ssid, const String &password)
     if (WiFi.status() == WL_CONNECTED)
     {
         Serial.printf("\n[WiFi] Connected successfully! IP: %s\n", WiFi.localIP().toString().c_str());
+
+        // Update last connected SSID
+        savedConfig.lastConnectedSSID = ssid;
+        Serial.println("[WiFi] Updated last connected SSID: " + ssid);
+        
+        // Save configuration to persist last connected SSID
+        if (isSDCardPowered())
+        {
+            JsonDocument doc;
+            JsonArray networks = doc["networks"].to<JsonArray>();
+            
+            for (const auto &network : savedConfig.savedNetworks)
+            {
+                JsonObject netObj = networks.add<JsonObject>();
+                netObj["ssid"] = network.ssid;
+                netObj["password"] = network.password;
+                netObj["autoConnect"] = network.autoConnect;
+                netObj["priority"] = network.priority;
+            }
+            
+            doc["lastConnectedSSID"] = savedConfig.lastConnectedSSID;
+            
+            String configJson;
+            serializeJson(doc, configJson);
+            
+            File configFile = SD.open("/config/wifi_networks.json", FILE_WRITE);
+            if (configFile)
+            {
+                configFile.print(configJson);
+                configFile.close();
+                Serial.println("[WiFi] Saved last connected SSID to configuration");
+            }
+        }
 
         // Start non-blocking NTP time synchronization when WiFi connects
         Serial.println("[WiFi] Starting NTP time synchronization...");
@@ -1318,4 +1355,129 @@ void WiFiScreen::changePriority(int index, bool increase)
             }
         }
     }
+}
+
+void WiFiScreen::autoConnectToSavedNetworks()
+{
+    Serial.println("[WiFi] Starting auto-connection process...");
+    
+    // Ensure WiFi is enabled first
+    if (!isWiFiEnabled())
+    {
+        Serial.println("[WiFi] WiFi not enabled, enabling WiFi...");
+        WiFi.mode(WIFI_STA);
+        delay(1000); // Give WiFi time to initialize
+    }
+    
+    // Don't auto-connect if already connected
+    if (isConnected())
+    {
+        Serial.println("[WiFi] Already connected to: " + getConnectedSSID());
+        return;
+    }
+    
+    // Don't auto-connect if no saved networks
+    if (savedConfig.savedNetworks.empty())
+    {
+        Serial.println("[WiFi] No saved networks available for auto-connection");
+        return;
+    }
+    
+    // Scan for available networks
+    Serial.println("[WiFi] Scanning for available networks...");
+    int networkCount = WiFi.scanNetworks();
+    
+    if (networkCount == 0)
+    {
+        Serial.println("[WiFi] No networks found during scan");
+        return;
+    }
+    
+    Serial.printf("[WiFi] Found %d networks\n", networkCount);
+    
+    // Create list of available network SSIDs
+    std::vector<String> availableSSIDs;
+    for (int i = 0; i < networkCount; i++)
+    {
+        availableSSIDs.push_back(WiFi.SSID(i));
+        Serial.printf("[WiFi] Available: %s (RSSI: %d)\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+    }
+    
+    // First, try to connect to the last connected network if it's available
+    if (!savedConfig.lastConnectedSSID.isEmpty())
+    {
+        Serial.println("[WiFi] Checking for last connected network: " + savedConfig.lastConnectedSSID);
+        
+        // Check if last connected network is available
+        bool lastNetworkAvailable = false;
+        for (const String& ssid : availableSSIDs)
+        {
+            if (ssid == savedConfig.lastConnectedSSID)
+            {
+                lastNetworkAvailable = true;
+                break;
+            }
+        }
+        
+        if (lastNetworkAvailable)
+        {
+            // Find the network in saved config to get password
+            for (const auto& network : savedConfig.savedNetworks)
+            {
+                if (network.ssid == savedConfig.lastConnectedSSID)
+                {
+                    Serial.println("[WiFi] Attempting to connect to last connected network: " + savedConfig.lastConnectedSSID);
+                    connectToNetwork(network.ssid, network.password);
+                    return; // Exit after attempting connection
+                }
+            }
+        }
+        else
+        {
+            Serial.println("[WiFi] Last connected network not available: " + savedConfig.lastConnectedSSID);
+        }
+    }
+    
+    // If last connected network is not available, try other saved networks by priority
+    Serial.println("[WiFi] Trying other saved networks by priority...");
+    
+    for (const auto& network : savedConfig.savedNetworks)
+    {
+        // Skip if this is the last connected network (already tried above)
+        if (network.ssid == savedConfig.lastConnectedSSID)
+        {
+            continue;
+        }
+        
+        // Skip if auto-connect is disabled for this network
+        if (!network.autoConnect)
+        {
+            Serial.println("[WiFi] Skipping " + network.ssid + " (auto-connect disabled)");
+            continue;
+        }
+        
+        // Check if this network is available
+        bool networkAvailable = false;
+        for (const String& ssid : availableSSIDs)
+        {
+            if (ssid == network.ssid)
+            {
+                networkAvailable = true;
+                break;
+            }
+        }
+        
+        if (networkAvailable)
+        {
+            Serial.printf("[WiFi] Attempting to connect to %s (priority: %d)\n", network.ssid.c_str(), network.priority);
+            connectToNetwork(network.ssid, network.password);
+            return; // Exit after attempting connection
+        }
+        else
+        {
+            Serial.println("[WiFi] Network not available: " + network.ssid);
+        }
+    }
+    
+    Serial.println("[WiFi] No suitable networks found for auto-connection");
 }

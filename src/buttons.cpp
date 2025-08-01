@@ -4,7 +4,7 @@
 #include "ui.h" // Include the new UI header
 #include "main.h"
 #include "ui/files/files_screen.h" // Include FilesScreen header
-#include "ui/books/book_screen.h" // Include BookScreen header
+#include "ui/books/book_screen.h"  // Include BookScreen header
 
 // OneButton instances for each button
 OneButton button1; // DOWN
@@ -47,15 +47,26 @@ void button1DoubleClick() // DOWN double click
         if (bookScreen.getCurrentBookPage() < bookScreen.getTotalBookPages() - 1)
         {
             bookScreen.nextBookPage();
-            bookScreen.draw(EinkDisplayManager::UPDATE_FULL);
+            bookScreen.draw(EinkDisplayManager::UPDATE_PARTIAL);
         }
     }
 }
 
 void button1LongPressStart() // DOWN long press
 {
-    Serial.println("DOWN long press - Context action placeholder");
-    // Future: Context-specific long press action
+    Serial.println("DOWN long press - Context action or clock saver");
+    extern AppScreen current_screen;
+    
+    // Check if in main menu - go to clock screen saver
+    if (current_screen == SCREEN_MAIN_MENU)
+    {
+        handleMainMenuLongPress();
+    }
+    else
+    {
+        // Future: Context-specific long press action
+        Serial.println("Context action placeholder");
+    }
 }
 
 void button2DoubleClick() // SELECT double click
@@ -66,10 +77,16 @@ void button2DoubleClick() // SELECT double click
 
 void button2LongPressStart() // SELECT long press
 {
-    Serial.println("SELECT long press - Global back to main menu");
-    // Global navigation: Long press SELECT always returns to main menu
+    Serial.println("SELECT long press - Global back to main menu or clock saver");
     extern AppScreen current_screen;
-    if (current_screen != SCREEN_MAIN_MENU)
+    
+    // Check if in main menu - go to clock screen saver
+    if (current_screen == SCREEN_MAIN_MENU)
+    {
+        handleMainMenuLongPress();
+    }
+    // Global navigation: Long press SELECT returns to main menu from other screens
+    else if (current_screen != SCREEN_MAIN_MENU)
     {
         current_screen = SCREEN_MAIN_MENU;
         drawMainMenu(EinkDisplayManager::UPDATE_FAST);
@@ -94,18 +111,23 @@ void button3DoubleClick() // UP double click
         if (bookScreen.getCurrentBookPage() > 0)
         {
             bookScreen.previousBookPage();
-            bookScreen.draw(EinkDisplayManager::UPDATE_FULL);
+            bookScreen.draw(EinkDisplayManager::UPDATE_PARTIAL);
         }
     }
 }
 
 void button3LongPressStart() // UP long press
 {
-    Serial.println("UP long press - Opening global menu");
+    Serial.println("UP long press - Opening global menu or clock saver");
     extern AppScreen current_screen;
 
+    // Check if in main menu - go to clock screen saver
+    if (current_screen == SCREEN_MAIN_MENU)
+    {
+        handleMainMenuLongPress();
+    }
     // Open global menu for files screen
-    if (current_screen == SCREEN_FILES)
+    else if (current_screen == SCREEN_FILES)
     {
         extern FilesScreen filesScreen;
         filesScreen.showGlobalMenu();

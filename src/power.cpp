@@ -1,14 +1,16 @@
 #include "power.h"
 #include "pins.h"
+#include "storage.h"
 #include <Arduino.h>
 #include <esp_sleep.h>
 #include <esp_pm.h>
 #include <esp_wifi.h>
 #include <esp_bt.h>
+#include <WiFi.h>
 
 // Power management state
 static PowerMode current_power_mode = POWER_ACTIVE;
-static bool low_power_mode = false;
+bool low_power_mode = false; // Made non-static for external access
 
 // Battery monitoring variables
 static float battery_voltage = 0.0;
@@ -189,11 +191,11 @@ void updatePowerStatus()
     static unsigned long last_thermal_check = 0;
     if (millis() - last_thermal_check > 60000) // Check every minute
     {
-        // If device has been running at high frequency for extended periods,
-        // and battery is draining fast, enable thermal protection
-        if (!low_power_mode && !charging_status && battery_percentage < 80)
+        // Only enable thermal protection if battery is very low (below 20%) and not charging
+        // This prevents unnecessary thermal protection during normal operation
+        if (!low_power_mode && !charging_status && battery_percentage < 20)
         {
-            Serial.println("[THERMAL] Enabling thermal protection mode to prevent overheating");
+            Serial.println("[THERMAL] Enabling thermal protection mode due to low battery");
             setLowPowerMode(true);
         }
         last_thermal_check = millis();
@@ -342,10 +344,21 @@ void enterDeepSleep(uint64_t sleep_time_us)
     Serial.println("[POWER] Entering deep sleep mode...");
     current_power_mode = POWER_DEEP_SLEEP;
 
+    // Properly shut down peripherals to prevent crashes
+    Serial.println("[POWER] Shutting down WiFi and Bluetooth...");
+    esp_wifi_stop();
+    esp_bt_controller_disable();
+    
+    // Power down SD card to prevent conflicts
+    Serial.println("[POWER] Powering down SD card...");
+    disableSDCardWakeup(); // This calls powerOffSDCard() from storage module
+    
     // Save critical data to RTC memory if needed
 
     // Configure wake up sources
-    esp_sleep_enable_timer_wakeup(sleep_time_us);
+    if (sleep_time_us > 0) {
+        esp_sleep_enable_timer_wakeup(sleep_time_us);
+    }
     enableGPIOWakeup();
 
     // Turn off power LED
@@ -365,12 +378,14 @@ void enterDeepSleep(uint64_t sleep_time_us)
 void enableGPIOWakeup()
 {
     // Wake up from any of the three buttons
+    // Note: Using ESP_EXT1_WAKEUP_ANY_HIGH since buttons are active HIGH according to pins.h
     esp_sleep_enable_ext1_wakeup(
         (1ULL << BTN_KEY1) | (1ULL << BTN_KEY2) | (1ULL << BTN_KEY3),
-        ESP_EXT1_WAKEUP_ALL_LOW);
+        ESP_EXT1_WAKEUP_ANY_HIGH);
 
-    // Also allow RTC to wake up the device
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)RTC_INT, 0);
+    // Note: Commenting out RTC wakeup due to pin conflict with SD_CS (both use pin 4)
+    // This conflict could cause crashes when going to sleep
+    // esp_sleep_enable_ext0_wakeup((gpio_num_t)RTC_INT, 0);
 }
 
 /**
@@ -395,11 +410,45 @@ void setLowPowerMode(bool enable)
         // Reduce CPU frequency significantly for thermal management
         setCpuFrequencyMhz(80);
 
-        // Disable WiFi and Bluetooth
+        // Safely disable WiFi and Bluetooth with error handling
         Serial.println("[POWER] Disabling WiFi and Bluetooth for low power mode");
-        esp_wifi_stop();
-        esp_bt_controller_disable();
-        Serial.println("[POWER] WiFi and Bluetooth disabled");
+        
+        // Check WiFi state before stopping
+        wifi_mode_t wifi_mode;
+        if (esp_wifi_get_mode(&wifi_mode) == ESP_OK && wifi_mode != WIFI_MODE_NULL)
+        {
+            esp_err_t wifi_result = esp_wifi_stop();
+            if (wifi_result == ESP_OK)
+            {
+                Serial.println("[POWER] WiFi stopped successfully");
+            }
+            else
+            {
+                Serial.printf("[POWER] WiFi stop failed: %s\n", esp_err_to_name(wifi_result));
+            }
+        }
+        else
+        {
+            Serial.println("[POWER] WiFi already stopped or not initialized");
+        }
+        
+        // Check Bluetooth state before disabling
+        if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED)
+        {
+            esp_err_t bt_result = esp_bt_controller_disable();
+            if (bt_result == ESP_OK)
+            {
+                Serial.println("[POWER] Bluetooth disabled successfully");
+            }
+            else
+            {
+                Serial.printf("[POWER] Bluetooth disable failed: %s\n", esp_err_to_name(bt_result));
+            }
+        }
+        else
+        {
+            Serial.println("[POWER] Bluetooth already disabled or not initialized");
+        }
 
         // Disable unnecessary peripherals
         optimizePowerConsumption();
